@@ -5,8 +5,20 @@ from unittest.mock import Mock, patch, mock_open
 from langchain_tests.unit_tests import ToolsUnitTests
 
 # Import your tools
-from langchain_scrapingbee.tools import ScrapeUrlTool, GoogleSearchTool, CheckUsageTool
-
+from langchain_scrapingbee.tools import (
+    ScrapeUrlTool,
+    GoogleSearchTool,
+    CheckUsageTool,
+    AmazonSearchTool,
+    AmazonProductTool,
+    WalmartSearchTool,
+    WalmartProductTool,
+    ChatGPTTool,
+    YouTubeMetadataTool,
+    YouTubeSearchTool,
+    YouTubeTrainabilityTool,
+    YouTubeTranscriptTool,
+)
 
 class TestScrapeUrlToolUnit(ToolsUnitTests):
     @property
@@ -232,6 +244,311 @@ class TestCheckUsageToolUnit(ToolsUnitTests):
         result = tool._run()
         
         assert "Error checking usage" in result
+
+class TestAmazonSearchToolUnit(ToolsUnitTests):
+    @property
+    def tool_constructor(self) -> Type[AmazonSearchTool]:
+        return AmazonSearchTool
+
+    @property
+    def tool_constructor_params(self) -> dict:
+        return {"api_key": "test_api_key"}
+
+    @property
+    def tool_invoke_params_example(self) -> dict:
+        return {"query": "test query", "params": {"domain": "co.uk"}}
+
+    @patch("langchain_scrapingbee.tools.requests.get")
+    @patch("langchain_scrapingbee.tools.create_results_folder")
+    @patch("langchain_scrapingbee.tools.save_scraping_metadata")
+    @patch("builtins.open", new_callable=mock_open)
+    def test_amazon_search_success(
+        self, mock_file, mock_save_metadata, mock_create_folder, mock_requests_get
+    ):
+        mock_response = Mock()
+        mock_response.text = '{"results": [{"title": "Test Product"}]}'
+        mock_response.raise_for_status.return_value = None
+        mock_requests_get.return_value = mock_response
+        mock_create_folder.return_value = "/tmp/test_folder"
+
+        tool = self.tool_constructor(**self.tool_constructor_params)
+        result = tool._run(query="test query")
+
+        assert "Amazon search complete" in result
+        mock_file.assert_called()
+        mock_save_metadata.assert_called_once()
+
+
+class TestAmazonProductToolUnit(ToolsUnitTests):
+    @property
+    def tool_constructor(self) -> Type[AmazonProductTool]:
+        return AmazonProductTool
+
+    @property
+    def tool_constructor_params(self) -> dict:
+        return {"api_key": "test_api_key"}
+
+    @property
+    def tool_invoke_params_example(self) -> dict:
+        return {"query": "B0TESTASIN"}
+
+    @patch("langchain_scrapingbee.tools.requests.get")
+    @patch("langchain_scrapingbee.tools.create_results_folder")
+    @patch("langchain_scrapingbee.tools.save_scraping_metadata")
+    @patch("builtins.open", new_callable=mock_open)
+    def test_amazon_product_success(
+        self, mock_file, mock_save_metadata, mock_create_folder, mock_requests_get
+    ):
+        mock_response = Mock()
+        mock_response.text = '{"title": "Test Product Title"}'
+        mock_response.raise_for_status.return_value = None
+        mock_requests_get.return_value = mock_response
+        mock_create_folder.return_value = "/tmp/test_folder"
+
+        tool = self.tool_constructor(**self.tool_constructor_params)
+        result = tool._run(query="B0TESTASIN")
+
+        assert "Amazon product data retrieved" in result
+        mock_file.assert_called()
+        mock_save_metadata.assert_called_once()
+
+
+class TestWalmartSearchToolUnit(ToolsUnitTests):
+    @property
+    def tool_constructor(self) -> Type[WalmartSearchTool]:
+        return WalmartSearchTool
+
+    @property
+    def tool_constructor_params(self) -> dict:
+        return {"api_key": "test_api_key"}
+
+    @property
+    def tool_invoke_params_example(self) -> dict:
+        return {"query": "test query", "params": {"sort_by": "price_low"}}
+
+    @patch("langchain_scrapingbee.tools.requests.get")
+    @patch("langchain_scrapingbee.tools.create_results_folder")
+    @patch("langchain_scrapingbee.tools.save_scraping_metadata")
+    @patch("builtins.open", new_callable=mock_open)
+    def test_walmart_search_success(
+        self, mock_file, mock_save_metadata, mock_create_folder, mock_requests_get
+    ):
+        mock_response = Mock()
+        mock_response.text = '{"results": [{"title": "Test Product"}]}'
+        mock_response.raise_for_status.return_value = None
+        mock_requests_get.return_value = mock_response
+        mock_create_folder.return_value = "/tmp/test_folder"
+
+        tool = self.tool_constructor(**self.tool_constructor_params)
+        result = tool._run(query="test query")
+
+        assert "Walmart search complete" in result
+        mock_file.assert_called()
+        mock_save_metadata.assert_called_once()
+
+
+class TestWalmartProductToolUnit(ToolsUnitTests):
+    @property
+    def tool_constructor(self) -> Type[WalmartProductTool]:
+        return WalmartProductTool
+
+    @property
+    def tool_constructor_params(self) -> dict:
+        return {"api_key": "test_api_key"}
+
+    @property
+    def tool_invoke_params_example(self) -> dict:
+        return {"product_id": "12345TEST"}
+
+    @patch("langchain_scrapingbee.tools.requests.get")
+    @patch("langchain_scrapingbee.tools.create_results_folder")
+    @patch("langchain_scrapingbee.tools.save_scraping_metadata")
+    @patch("builtins.open", new_callable=mock_open)
+    def test_walmart_product_success(
+        self, mock_file, mock_save_metadata, mock_create_folder, mock_requests_get
+    ):
+        mock_response = Mock()
+        mock_response.text = '{"title": "Test Product Title"}'
+        mock_response.raise_for_status.return_value = None
+        mock_requests_get.return_value = mock_response
+        mock_create_folder.return_value = "/tmp/test_folder"
+
+        tool = self.tool_constructor(**self.tool_constructor_params)
+        result = tool._run(product_id="12345TEST")
+
+        assert "Walmart product data retrieved" in result
+        mock_file.assert_called()
+        mock_save_metadata.assert_called_once()
+
+
+class TestChatGPTToolUnit(ToolsUnitTests):
+    @property
+    def tool_constructor(self) -> Type[ChatGPTTool]:
+        return ChatGPTTool
+
+    @property
+    def tool_constructor_params(self) -> dict:
+        return {"api_key": "test_api_key"}
+
+    @property
+    def tool_invoke_params_example(self) -> dict:
+        return {"prompt": "hello world", "params": {"search": True}}
+
+    @patch("langchain_scrapingbee.tools.requests.get")
+    @patch("langchain_scrapingbee.tools.create_results_folder")
+    @patch("langchain_scrapingbee.tools.save_scraping_metadata")
+    @patch("builtins.open", new_callable=mock_open)
+    def test_chatgpt_success(
+        self, mock_file, mock_save_metadata, mock_create_folder, mock_requests_get
+    ):
+        mock_response = Mock()
+        mock_response.text = '{"answer": "This is a test response."}'
+        mock_response.raise_for_status.return_value = None
+        mock_requests_get.return_value = mock_response
+        mock_create_folder.return_value = "/tmp/test_folder"
+
+        tool = self.tool_constructor(**self.tool_constructor_params)
+        result = tool._run(prompt="test prompt")
+
+        assert "ChatGPT API call successful" in result
+        mock_file.assert_called()
+        mock_save_metadata.assert_called_once()
+
+class TestYouTubeMetadataToolUnit(ToolsUnitTests):
+    @property
+    def tool_constructor(self) -> Type[YouTubeMetadataTool]:
+        return YouTubeMetadataTool
+
+    @property
+    def tool_constructor_params(self) -> dict:
+        return {"api_key": "test_api_key"}
+
+    @property
+    def tool_invoke_params_example(self) -> dict:
+        return {"video_id": "dQw4w9WgXcQ"}
+
+    @patch("langchain_scrapingbee.tools.requests.get")
+    @patch("langchain_scrapingbee.tools.create_results_folder")
+    @patch("langchain_scrapingbee.tools.save_scraping_metadata")
+    @patch("builtins.open", new_callable=mock_open)
+    def test_youtube_metadata_success(
+        self, mock_file, mock_save_metadata, mock_create_folder, mock_requests_get
+    ):
+        mock_response = Mock()
+        mock_response.text = '{"title": "Test Video", "channel": {"name": "Test Channel"}, "view_count": 1000000}'
+        mock_response.raise_for_status.return_value = None
+        mock_requests_get.return_value = mock_response
+        mock_create_folder.return_value = "/tmp/test_folder"
+
+        tool = self.tool_constructor(**self.tool_constructor_params)
+        result = tool._run(video_id="dQw4w9WgXcQ")
+
+        assert "YouTube metadata retrieved" in result
+        mock_file.assert_called()
+        mock_save_metadata.assert_called_once()
+
+
+class TestYouTubeSearchToolUnit(ToolsUnitTests):
+    @property
+    def tool_constructor(self) -> Type[YouTubeSearchTool]:
+        return YouTubeSearchTool
+
+    @property
+    def tool_constructor_params(self) -> dict:
+        return {"api_key": "test_api_key"}
+
+    @property
+    def tool_invoke_params_example(self) -> dict:
+        return {"search": "movie trailers", "params": {"sort_by": "relevance"}}
+
+    @patch("langchain_scrapingbee.tools.requests.get")
+    @patch("langchain_scrapingbee.tools.create_results_folder")
+    @patch("langchain_scrapingbee.tools.save_scraping_metadata")
+    @patch("builtins.open", new_callable=mock_open)
+    def test_youtube_search_success(
+        self, mock_file, mock_save_metadata, mock_create_folder, mock_requests_get
+    ):
+        mock_response = Mock()
+        mock_response.text = '{"results": [{"title": "Test Video", "videoId": "abc123"}]}'
+        mock_response.raise_for_status.return_value = None
+        mock_requests_get.return_value = mock_response
+        mock_create_folder.return_value = "/tmp/test_folder"
+
+        tool = self.tool_constructor(**self.tool_constructor_params)
+        result = tool._run(search="movie trailers")
+
+        assert "YouTube search complete" in result
+        mock_file.assert_called()
+        mock_save_metadata.assert_called_once()
+
+
+class TestYouTubeTrainabilityToolUnit(ToolsUnitTests):
+    @property
+    def tool_constructor(self) -> Type[YouTubeTrainabilityTool]:
+        return YouTubeTrainabilityTool
+
+    @property
+    def tool_constructor_params(self) -> dict:
+        return {"api_key": "test_api_key"}
+
+    @property
+    def tool_invoke_params_example(self) -> dict:
+        return {"video_id": "Fdh-n-m6dOo"}
+
+    @patch("langchain_scrapingbee.tools.requests.get")
+    @patch("langchain_scrapingbee.tools.create_results_folder")
+    @patch("langchain_scrapingbee.tools.save_scraping_metadata")
+    @patch("builtins.open", new_callable=mock_open)
+    def test_youtube_trainability_success(
+        self, mock_file, mock_save_metadata, mock_create_folder, mock_requests_get
+    ):
+        mock_response = Mock()
+        mock_response.text = '{"etag":"dkQJ_xQ1SOIgKqVdhh0tBZ0EKM8","kind":"youtube#videoTrainability","permitted":["None"],"video_id":"Fdh-n-m6dOo"}'
+        mock_response.raise_for_status.return_value = None
+        mock_requests_get.return_value = mock_response
+        mock_create_folder.return_value = "/tmp/test_folder"
+
+        tool = self.tool_constructor(**self.tool_constructor_params)
+        result = tool._run(video_id="Fdh-n-m6dOo")
+
+        assert "YouTube trainability check complete" in result
+        mock_file.assert_called()
+        mock_save_metadata.assert_called_once()
+
+
+class TestYouTubeTranscriptToolUnit(ToolsUnitTests):
+    @property
+    def tool_constructor(self) -> Type[YouTubeTranscriptTool]:
+        return YouTubeTranscriptTool
+
+    @property
+    def tool_constructor_params(self) -> dict:
+        return {"api_key": "test_api_key"}
+
+    @property
+    def tool_invoke_params_example(self) -> dict:
+        return {"video_id": "Fdh-n-m6dOo", "params": {"language": "en"}}
+
+    @patch("langchain_scrapingbee.tools.requests.get")
+    @patch("langchain_scrapingbee.tools.create_results_folder")
+    @patch("langchain_scrapingbee.tools.save_scraping_metadata")
+    @patch("builtins.open", new_callable=mock_open)
+    def test_youtube_transcript_success(
+        self, mock_file, mock_save_metadata, mock_create_folder, mock_requests_get
+    ):
+        mock_response = Mock()
+        mock_response.text = '{"text":"The world stands on the edge of darkness.","transcripts":[{"start_ms":"3520","end_ms":"4960","snippet":{"runs":[{"text":"The world stands on the edge of"}]}}]}'
+        mock_response.raise_for_status.return_value = None
+        mock_requests_get.return_value = mock_response
+        mock_create_folder.return_value = "/tmp/test_folder"
+
+        tool = self.tool_constructor(**self.tool_constructor_params)
+        result = tool._run(video_id="Fdh-n-m6dOo")
+
+        assert "YouTube transcript retrieved" in result
+        mock_file.assert_called()
+        mock_save_metadata.assert_called_once()
+
 
 
 # Additional unit tests for utility functions
