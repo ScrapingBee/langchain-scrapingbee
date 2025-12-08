@@ -82,10 +82,12 @@ scraping_prompt = (
         - "own_proxy": "protocol://user:pass@host:port" - Use your own proxy
         - "premium_proxy": true - Use premium proxy pool (10-25 credits)
         - "render_js": true/false - Enable JS rendering (default: true)
+        - "return_page_markdown": true - Return the page content in markdown format
         - "return_page_source": true - Return original HTML before JS rendering
+        - "return_page_text": true - Return the text content of the page you want to scrape
         - "scraping_config": config_name (Must only use if provided by user) - Use a pre-saved request configuration on your request
         - "screenshot": true - Screenshot of viewport
-        - "screenshot_full_page": true - Full page screenshot  
+        - "screenshot_full_page": true - Full page screenshot
         - "screenshot_selector": "css-selector" - Screenshot specific element
         - "session_id": 123 - Use persistent session (1-10000000, lasts 5 minutes)
         - "stealth_proxy": true - Use stealth proxies for difficult sites or when the previous request fails (75 credits)
@@ -103,7 +105,6 @@ scraping_prompt = (
         SCRAPING STRATEGY:
         - Research Well using Google Search API: When you lack sufficient information, use Google Search API to find it first before attempting to scrape pages. You can use it multiple times before and in-between scrapes
         - Prefer AI Extraction Rules over Data Extraction rules: Use extract_rules if selector is known, otherwise use extract_rules to get the body in html to find the selector, do not use ai_query or ai_extract_rules for finding selector and do not guess selector
-        - Use 
         """
     )
 
@@ -126,7 +127,7 @@ def sanitize_filename(url: str, max_length: int = 100) -> str:
     clean_name = re.sub(r'[-\s]+', '_', clean_name)
     return clean_name[:max_length]
 
-def save_scraping_metadata(folder_path: str, url: str, params: Dict, result_type: str, 
+def save_scraping_metadata(folder_path: str, url: str, params: Dict, result_type: str,
                           filename: str = None, reference_id: str = None) -> str:
     """Saves metadata about the scraping operation."""
     metadata = {
@@ -137,11 +138,11 @@ def save_scraping_metadata(folder_path: str, url: str, params: Dict, result_type
         "filename": filename,
         "reference_id": reference_id
     }
-    
+
     metadata_file = os.path.join(folder_path, "scraping_metadata.jsonl")
     with open(metadata_file, "a", encoding="utf-8") as f:
         f.write(json.dumps(metadata) + "\n")
-    
+
     return metadata_file
 
 def stringify_nested_objects(params: Dict[str, Any]) -> Dict[str, Any]:
@@ -176,7 +177,7 @@ def str_to_dict_validator(v: Any) -> Any:
             return json.loads(v)
         except json.JSONDecodeError:
             print(v)
-        
+
         # Try to parse as Python dictionary literal (e.g., "{'key': True}")
         try:
             if v.strip().startswith('{') and v.strip().endswith('}'):
@@ -185,7 +186,7 @@ def str_to_dict_validator(v: Any) -> Any:
                 return ast.literal_eval(v)
         except (ValueError, SyntaxError, TypeError):
             print(v)
-        
+
         # Try to parse as URL parameters (key=value&key2=value2)
         try:
             if '=' in v:
@@ -208,7 +209,7 @@ def str_to_dict_validator(v: Any) -> Any:
         except Exception as e:
             print(e)
             print(print(v))
-            
+
         # If all else fails, let Pydantic handle it
     return v
 
@@ -236,11 +237,11 @@ class ScrapeUrlInput(BaseModel):
         description="Custom headers to forward to the target website. Will be prefixed with 'Spb-' automatically."
     )
     results_folder: Optional[str] = Field(
-        default="scraping_results", 
+        default="scraping_results",
         description="Base folder for results (timestamped subfolder will be created)"
     )
     custom_filename: Optional[str] = Field(
-        default=None, 
+        default=None,
         description="Custom filename (with extension)"
     )
     return_content: Optional[bool] = Field(
@@ -252,7 +253,7 @@ class ScrapeUrlInput(BaseModel):
     @classmethod
     def validate_params(cls, v: Any) -> Any:
         return str_to_dict_validator(v)
-    
+
     @field_validator('headers', mode='before')
     @classmethod
     def validate_headers(cls, v: Any) -> Any:
@@ -261,14 +262,14 @@ class ScrapeUrlInput(BaseModel):
 class ScrapeUrlTool(BaseTool):
     """
     Comprehensive web scraping tool using ScrapingBee API. Handles text extraction, screenshots, file downloads, and data extraction.
-    
+
     KEY WORKFLOW FOR BINARY CONTENT:
     When taking screenshots or downloading files, returns JSON: {"status": "binary_content_staged", "reference_id": "ref_..."}
     MUST immediately call write_file tool with the reference_id to save the file.
-    
+
     CAPABILITIES:
     - Text scraping with JavaScript rendering
-    - Full page and element screenshots  
+    - Full page and element screenshots
     - Structured data extraction with CSS selectors
     - AI-powered content extraction
     - File downloads (PDFs, images, etc.)
@@ -291,46 +292,46 @@ class ScrapeUrlTool(BaseTool):
         else: return "bin"
 
     def _run(self, url: str, params: Optional[Dict[str, Any]] = None,
-             headers: Optional[Dict[str, str]] = None, 
+             headers: Optional[Dict[str, str]] = None,
              results_folder: str = "scraping_results", custom_filename: str = None,
              return_content: bool = False) -> str:
-        if params is None: 
+        if params is None:
             params = {}
 
         processed_params = stringify_nested_objects(params)
 
         if headers is None:
             headers = {}
-            
+
         final_headers = {}
         if headers:
             for key, value in headers.items():
                 spb_key = f"Spb-{key}"
                 final_headers[spb_key] = value
-            
+
             processed_params['forward_headers'] = True
-        
+
         final_headers['User-Agent'] = 'LangChain'
-        
+
         api_url = "https://app.scrapingbee.com/api/v1/"
         request_params = {'api_key': self.api_key, 'url': url, **processed_params}
-        
+
         try:
             response = requests.get(api_url, params=request_params, headers=final_headers, timeout=180)
             response.raise_for_status()
-            
+
             content_type = response.headers.get('Content-Type', '')
             # Check if binary content (screenshots, PDFs, images)
             is_binary = (
-                any(sub in content_type for sub in ['image/', 'application/pdf', 'octet-stream']) or 
-                params.get('screenshot') or 
-                params.get('screenshot_full_page') or 
+                any(sub in content_type for sub in ['image/', 'application/pdf', 'octet-stream']) or
+                params.get('screenshot') or
+                params.get('screenshot_full_page') or
                 params.get('screenshot_selector')
             )
 
             # Always save content first
             folder_path = create_results_folder(results_folder)
-            
+
             if is_binary:
                 # Save binary content
                 if custom_filename:
@@ -339,14 +340,14 @@ class ScrapeUrlTool(BaseTool):
                     base_name = sanitize_filename(url)
                     ext = self._get_extension_from_content_type(content_type)
                     filename = f"{base_name}.{ext}"
-                
+
                 file_path = os.path.join(folder_path, filename)
-                
+
                 with open(file_path, 'wb') as f:
                     f.write(response.content)
-                
+
                 save_scraping_metadata(folder_path, url, params, "binary", filename=filename)
-                
+
                 if return_content:
                     # For binary files, we can't return content directly, so return file info + note
                     return f"""Binary content saved and processed:
@@ -368,14 +369,14 @@ class ScrapeUrlTool(BaseTool):
                     filename = custom_filename
                 else:
                     filename = f"{sanitize_filename(url)}.html"
-                
+
                 file_path = os.path.join(folder_path, filename)
-                
+
                 with open(file_path, 'w', encoding='utf-8') as f:
                     f.write(response.text)
-                
+
                 save_scraping_metadata(folder_path, url, params, "text", filename=filename)
-                
+
                 if return_content:
                     return f"""Text content saved and loaded:
                             File: {file_path}
@@ -391,7 +392,7 @@ class ScrapeUrlTool(BaseTool):
                             Size: {len(response.text):,} characters
                             Content-Type: {content_type}
                             URL: {url}"""
-                
+
         except requests.exceptions.RequestException as e:
             error_detail = (getattr(e.response, 'text', str(e)) if hasattr(e, 'response') else str(e))[:1000]
             return f"Error: Request failed. Details: {error_detail}"
@@ -469,28 +470,28 @@ class GoogleSearchTool(BaseTool):
         """Checks if the image data is base64 encoded content."""
         if not image_data:
             return False
-        
+
         # Check for data URI format
         if image_data.startswith('data:image/') and 'base64,' in image_data:
             return True
-        
+
         # Check if it looks like base64 (not a URL)
         if image_data.startswith(('http://', 'https://', '//', '/')):
             return False
-        
+
         # Try to decode as base64 to verify
         try:
             clean_data = image_data
             if 'base64,' in image_data:
                 clean_data = image_data.split('base64,', 1)[1]
-            
+
             clean_data = re.sub(r'\s+', '', clean_data)
-            
+
             # Add padding if missing
             missing_padding = len(clean_data) % 4
             if missing_padding != 0:
                 clean_data += '=' * (4 - missing_padding)
-            
+
             base64.b64decode(clean_data)
             return True
         except Exception:
@@ -510,31 +511,31 @@ class GoogleSearchTool(BaseTool):
             missing_padding = len(clean_b64_data) % 4
             if missing_padding != 0:
                 clean_b64_data += '=' * (4 - missing_padding)
-            
+
             # Decode the base64 string
             image_bytes = base64.b64decode(clean_b64_data)
 
             # Detect format from the decoded bytes
             image_format = 'jpg'  # Default
-            if image_bytes.startswith(b'\x89PNG\r\n\x1a\n'): 
+            if image_bytes.startswith(b'\x89PNG\r\n\x1a\n'):
                 image_format = 'png'
-            elif image_bytes.startswith(b'GIF8'): 
+            elif image_bytes.startswith(b'GIF8'):
                 image_format = 'gif'
-            elif image_bytes.startswith(b'RIFF') and b'WEBP' in image_bytes: 
+            elif image_bytes.startswith(b'RIFF') and b'WEBP' in image_bytes:
                 image_format = 'webp'
-            elif image_bytes.startswith(b'\xff\xd8\xff'): 
+            elif image_bytes.startswith(b'\xff\xd8\xff'):
                 image_format = 'jpg'
 
             # Create filename and save
             sanitized_title = self._sanitize_filename(title)
             filename = f"{filename_prefix}_{sanitized_title}.{image_format}"
-            
+
             os.makedirs(folder_path, exist_ok=True)
             file_path = os.path.join(folder_path, filename)
-            
+
             with open(file_path, 'wb') as f:
                 f.write(image_bytes)
-            
+
             return f"Saved: {file_path}"
         except Exception as e:
             return f"Failed to save '{title}': {str(e)}"
@@ -543,10 +544,10 @@ class GoogleSearchTool(BaseTool):
         """Saves image URLs to a text file."""
         if not image_links:
             return "No image links to save"
-        
+
         os.makedirs(folder_path, exist_ok=True)
         links_file = os.path.join(folder_path, "image_links.txt")
-        
+
         try:
             with open(links_file, 'w', encoding='utf-8') as f:
                 f.write("# Image Links from Google Search\n")
@@ -555,17 +556,17 @@ class GoogleSearchTool(BaseTool):
                     f.write(f"{i}. Title: {link_info['title']}\n")
                     f.write(f"   URL: {link_info['url']}\n")
                     f.write(f"   Position: {link_info['position']}\n\n")
-            
+
             return f"Saved {len(image_links)} image links to: {links_file}"
         except Exception as e:
             return f"Failed to save image links: {str(e)}"
 
-    def _run(self, search: str, params: Optional[Dict[str, Any]] = None, 
+    def _run(self, search: str, params: Optional[Dict[str, Any]] = None,
              results_folder: str = "scraping_results", return_content: bool = False) -> str:
         params = params or {}
         api_url = "https://app.scrapingbee.com/api/v1/store/google"
         request_params = {'api_key': self.api_key, 'search': search, **params}
-        
+
         try:
             response = requests.get(api_url, params=request_params, headers={'User-Agent': 'LangChain'}, timeout=120)
             response.raise_for_status()
@@ -583,17 +584,17 @@ class GoogleSearchTool(BaseTool):
         try:
             results = response.json()
             image_results = results.get("images", [])
-            
+
             # Always save results
             folder_path = create_results_folder(results_folder)
-            
+
             if not image_results:
                 # Still save the empty results for reference
                 filename = f"image_search_{sanitize_filename(search)}.json"
                 file_path = os.path.join(folder_path, filename)
                 with open(file_path, 'w', encoding='utf-8') as f:
                     json.dump(results, f, indent=2)
-                
+
                 if return_content:
                     with open(file_path, 'r', encoding='utf-8') as f:
                         content = f.read()
@@ -604,16 +605,16 @@ class GoogleSearchTool(BaseTool):
                             {content}"""
                 else:
                     return f"Image search complete but no results found. Empty results saved to: {file_path}"
-            
+
             # Separate base64 images from URL links
             base64_images = []
             image_links = []
-            
+
             for item in image_results:
                 image_data = item.get("image", "")
                 title = item.get("title", "untitled")
                 position = item.get("position", 0)
-                
+
                 if self._is_base64_image(image_data):
                     base64_images.append({
                         "data": image_data,
@@ -626,38 +627,38 @@ class GoogleSearchTool(BaseTool):
                         "title": title,
                         "position": position
                     })
-            
+
             # Save base64 images
             saved_images = []
             for item in base64_images:
                 result = self._save_base64_image(
-                    item["data"], 
-                    folder_path, 
-                    f"{item['position']:02d}", 
+                    item["data"],
+                    folder_path,
+                    f"{item['position']:02d}",
                     item["title"]
                 )
                 saved_images.append(result)
-            
+
             # Save image links
             links_result = self._save_image_links(image_links, folder_path)
-            
+
             # Save full JSON results
             filename = f"image_search_{sanitize_filename(search)}.json"
             json_file_path = os.path.join(folder_path, filename)
             with open(json_file_path, 'w', encoding='utf-8') as f:
                 json.dump(results, f, indent=2)
-            
+
             # Save metadata
             save_scraping_metadata(folder_path, f"google_image_search:{search}", params, "image_search")
-            
+
             success_count = sum(1 for r in saved_images if r.startswith("Saved:"))
-            
+
             base_response = f"""Image search complete:
-                                - Saved {success_count} base64 images 
+                                - Saved {success_count} base64 images
                                 - {links_result}
                                 - Full results saved to: {json_file_path}
                                 - Results folder: {folder_path}"""
-            
+
             if return_content:
                 with open(json_file_path, 'r', encoding='utf-8') as f:
                     content = f.read()
@@ -667,7 +668,7 @@ class GoogleSearchTool(BaseTool):
                         {content}"""
             else:
                 return f"""{base_response}"""
-                
+
         except json.JSONDecodeError:
             return "Error: Failed to parse the image search response as JSON."
         except Exception as e:
@@ -676,20 +677,20 @@ class GoogleSearchTool(BaseTool):
     def _handle_regular_search(self, response, search: str, params: dict, results_folder: str, return_content: bool) -> str:
         """Handles regular search results (web, news, maps)."""
         response_text = response.text
-        
+
         # Always save results
         folder_path = create_results_folder(results_folder)
-        
+
         # Determine filename based on search type
         search_type = params.get("search_type", "web")
         filename = f"{search_type}_search_{sanitize_filename(search)}.json"
         file_path = os.path.join(folder_path, filename)
-        
+
         with open(file_path, 'w', encoding='utf-8') as f:
             f.write(response_text)
-        
+
         save_scraping_metadata(folder_path, f"google_{search_type}_search:{search}", params, "search_results", filename=filename)
-        
+
         # Count results for summary
         try:
             results = json.loads(response_text)
@@ -697,13 +698,13 @@ class GoogleSearchTool(BaseTool):
             result_count = max([len(results.get("organic_results", [])), len(results.get("news_results", [])), len(results.get("maps_results", []))])
         except:
             result_count = "unknown"
-        
+
         base_response = f"""Search complete:
                         Query: "{search}"
                         Type: {search_type}
                         Results: {result_count}
                         Saved to: {file_path}"""
-        
+
         if return_content:
             return f"""{base_response}
 
@@ -729,7 +730,7 @@ class CheckUsageTool(BaseTool):
     def _run(self) -> str:
         api_url = "https://app.scrapingbee.com/api/v1/usage"
         params = {'api_key': self.api_key}
-        
+
         try:
             response = requests.get(api_url, params=params, timeout=30)
             response.raise_for_status()
@@ -737,3 +738,809 @@ class CheckUsageTool(BaseTool):
         except requests.exceptions.RequestException as e:
             error_detail = getattr(e.response, 'text', str(e)) if hasattr(e, 'response') else str(e)
             return f"Error checking usage: {error_detail}"
+
+# ======================================================================================
+# Tool 4: Amazon Search API
+# ======================================================================================
+
+class AmazonSearchInput(BaseModel):
+    """Input model for the Amazon Search tool."""
+    query: str = Field(description="The search query for Amazon")
+    params: Optional[Dict[str, Any]] = Field(
+        default_factory=dict,
+        description="""
+            Optional parameters for the Amazon Search APIO. Must be a proper dictionary/object.
+            Examples:
+            {"add_html": true, "device": "mobile"}
+            {"light_request": false, "language": "es"}
+            {"zip_code": "90210", "device": "mobile"}
+            """
+    )
+    results_folder: Optional[str] = Field(
+        default="scraping_results",
+        description="Base folder to save results"
+    )
+    return_content: Optional[bool] = Field(
+        default=False,
+        description="Whether to return the search results in the response"
+    )
+
+    @field_validator('params', mode='before')
+    @classmethod
+    def validate_params(cls, v: Any) -> Any:
+        return str_to_dict_validator(v)
+
+class AmazonSearchTool(BaseTool):
+    """
+    Performs a product search on Amazon. All results are automatically saved to a JSON file.
+    Use return_content=True to get the results back for analysis.
+    """
+    name: str = "amazon_search"
+    description: str = (
+        "Performs a product search on Amazon. All results are automatically saved to a JSON file. "
+        "Use return_content=True to get the results back for analysis."
+        """
+        SUPPORTED PARAMS:
+        - "add_html": true/false - Include the full HTML of the search result page in the JSON response (default: false).
+        - "autoselect_variant": true/false - If a product page is reached and the main variant is unavailable, automatically select an available one (default: false).
+        - "country": "us" / "gb" / "de" etc. - Two-letter country code for geolocation of the request to get localized results.
+        - "currency": "USD" / "GBP" / "EUR" etc. - Three-letter currency code (ISO 4217) to display prices in.
+        - "device": "desktop" / "mobile / tablet" - Device type to simulate for the request (default: desktop).
+        - "domain": "com" / "co.uk" / "de" etc. - The Amazon top-level domain to use for the search (default: com).
+        - "language": "en-US" / "fr-FR" etc. - Language code for the request to get results in a specific language.
+        - "light_request": true/false - Perform a light, faster request. Set to false to force a full JavaScript render which may yield more data (default: true).
+        - "zip_code": "90210" - Postal or ZIP code for geolocation to see local delivery information and availability.
+        """
+    )
+    args_schema: Type[BaseModel] = AmazonSearchInput
+    api_key: str
+
+    def _run(self, query: str, params: Optional[Dict[str, Any]] = None,
+             results_folder: str = "scraping_results", return_content: bool = False) -> str:
+        params = params or {}
+        api_url = "https://app.scrapingbee.com/api/v1/amazon/search"
+        request_params = {'api_key': self.api_key, 'query': query, **params}
+
+        try:
+            response = requests.get(api_url, params=request_params, headers={'User-Agent': 'LangChain'}, timeout=120)
+            response.raise_for_status()
+        except requests.exceptions.RequestException as e:
+            return f"Error during Amazon Search API call: {getattr(e.response, 'text', str(e))}"
+
+        folder_path = create_results_folder(results_folder)
+        filename = f"amazon_search_{sanitize_filename(query)}.json"
+        file_path = os.path.join(folder_path, filename)
+
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(response.text)
+
+        save_scraping_metadata(folder_path, f"amazon_search:{query}", params, "search_results", filename=filename)
+
+        try:
+            results = json.loads(response.text)
+            result_count = len(results.get("results", []))
+        except json.JSONDecodeError:
+            result_count = "unknown (invalid JSON)"
+
+        base_response = (f"Amazon search complete:\n"
+                         f"Query: \"{query}\"\n"
+                         f"Results: {result_count}\n"
+                         f"Saved to: {file_path}")
+
+        if return_content:
+            return f"{base_response}\n\nCONTENT:\n{response.text}"
+        else:
+            return base_response
+
+# ======================================================================================
+# Tool 5: Amazon Product API
+# ======================================================================================
+
+class AmazonProductInput(BaseModel):
+    """Input model for the Amazon Product tool."""
+    query: str = Field(description="The ASIN (Amazon Standard Identification Number) of the product")
+    params: Optional[Dict[str, Any]] = Field(
+        default_factory=dict,
+        description="Optional parameters for the Amazon Product API"
+    )
+    results_folder: Optional[str] = Field(
+        default="scraping_results",
+        description="Base folder to save results"
+    )
+    return_content: Optional[bool] = Field(
+        default=False,
+        description="Whether to return the product data in the response"
+    )
+
+    @field_validator('params', mode='before')
+    @classmethod
+    def validate_params(cls, v: Any) -> Any:
+        return str_to_dict_validator(v)
+
+class AmazonProductTool(BaseTool):
+    """
+    Retrieves detailed information for a specific Amazon product using its ASIN.
+    All results are automatically saved to a JSON file.
+    """
+    name: str = "amazon_product"
+    description: str = (
+        "Retrieves detailed information for a specific Amazon product using its ASIN. "
+        "All results are automatically saved to a JSON file."
+        """
+        SUPPORTED PARAMS:
+        - "add_html": true/false - Include the full HTML of the product page in the JSON response (default: false).
+        - "autoselect_variant": true/false - If the main variant is unavailable, automatically select an available one (default: false).
+        - "country": "us" / "gb" / "de" etc. - Two-letter country code for geolocation of the request to get localized results.
+        - "currency": "USD" / "GBP" / "EUR" etc. - Three-letter currency code (ISO 4217) to display prices in.
+        - "device": "desktop" / "mobile" - Device type to simulate for the request (default: desktop).
+        - "domain": "com" / "co.uk" / "de" etc. - The Amazon top-level domain to use for the request (default: com).
+        - "language": "en-US" / "fr-FR" etc. - Language code for the request to get results in a specific language.
+        - "light_request": true/false - Perform a light, faster request. Set to false to force a full JavaScript render which may yield more data (default: true).
+        - "zip_code": "90210" - Postal or ZIP code for geolocation to see local delivery information and availability.
+        """
+    )
+    args_schema: Type[BaseModel] = AmazonProductInput
+    api_key: str
+
+    def _run(self, query: str, params: Optional[Dict[str, Any]] = None,
+             results_folder: str = "scraping_results", return_content: bool = False) -> str:
+        params = params or {}
+        api_url = "https://app.scrapingbee.com/api/v1/amazon/product"
+        request_params = {'api_key': self.api_key, 'query': query, **params}
+
+        try:
+            response = requests.get(api_url, params=request_params, headers={'User-Agent': 'LangChain'}, timeout=120)
+            response.raise_for_status()
+        except requests.exceptions.RequestException as e:
+            return f"Error during Amazon Product API call: {getattr(e.response, 'text', str(e))}"
+
+        folder_path = create_results_folder(results_folder)
+        filename = f"amazon_product_{sanitize_filename(query)}.json"
+        file_path = os.path.join(folder_path, filename)
+
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(response.text)
+
+        save_scraping_metadata(folder_path, f"amazon_product:{query}", params, "product_data", filename=filename)
+
+        base_response = (f"Amazon product data retrieved:\n"
+                         f"ASIN: \"{query}\"\n"
+                         f"Saved to: {file_path}")
+
+        if return_content:
+            return f"{base_response}\n\nCONTENT:\n{response.text}"
+        else:
+            return base_response
+
+# ======================================================================================
+# Tool 6: Walmart Search API
+# ======================================================================================
+
+class WalmartSearchInput(BaseModel):
+    """Input model for the Walmart Search tool."""
+    query: str = Field(description="The search query for Walmart")
+    params: Optional[Dict[str, Any]] = Field(
+        default_factory=dict,
+        description="Optional parameters for the Walmart Search API"
+    )
+    results_folder: Optional[str] = Field(
+        default="scraping_results",
+        description="Base folder to save results"
+    )
+    return_content: Optional[bool] = Field(
+        default=False,
+        description="Whether to return the search results in the response"
+    )
+
+    @field_validator('params', mode='before')
+    @classmethod
+    def validate_params(cls, v: Any) -> Any:
+        return str_to_dict_validator(v)
+
+class WalmartSearchTool(BaseTool):
+    """
+    Performs a product search on Walmart. All results are automatically saved to a JSON file.
+    """
+    name: str = "walmart_search"
+    description: str = (
+        "Performs a product search on Walmart. All results are automatically saved to a JSON file."
+        """
+        SUPPORTED PARAMS:
+        - "add_html": true/false - Include the full HTML of the search result page in the JSON response (default: false).
+        - "delivery_zip": "72716" - ZIP code to check for local delivery options and availability.
+        - "device": "desktop" / "mobile" / "tablet" - Device type to simulate for the request (default: desktop).
+        - "domain": "com" / "mx" / "ca" - The Walmart top-level domain to use for the search (e.g., com for US, ca for Canada).
+        - "fulfillment_speed": "today" / "tomorrow" / "2_days" - Filter results by delivery speed.
+        - "fulfillment_type": "in_store" - Filter results to show only items available for in-store pickup.
+        - "light_request": true/false - Perform a light, faster request. Set to false to force a full JavaScript render (default: false).
+        - "max_price": number - Filter results by a maximum price.
+        - "min_price": number - Filter results by a minimum price.
+        - "sort_by": "best_match" / "price_low" / "price_high" / "best_seller" - Sorting order for results (default: best_match).
+        - "store_id": "1234" - A specific Walmart store ID to check for inventory and pricing.
+
+        """
+    )
+    args_schema: Type[BaseModel] = WalmartSearchInput
+    api_key: str
+
+    def _run(self, query: str, params: Optional[Dict[str, Any]] = None,
+             results_folder: str = "scraping_results", return_content: bool = False) -> str:
+        params = params or {}
+        api_url = "https://app.scrapingbee.com/api/v1/walmart/search"
+        request_params = {'api_key': self.api_key, 'query': query, **params}
+
+        try:
+            response = requests.get(api_url, params=request_params, headers={'User-Agent': 'LangChain'}, timeout=120)
+            response.raise_for_status()
+        except requests.exceptions.RequestException as e:
+            return f"Error during Walmart Search API call: {getattr(e.response, 'text', str(e))}"
+
+        folder_path = create_results_folder(results_folder)
+        filename = f"walmart_search_{sanitize_filename(query)}.json"
+        file_path = os.path.join(folder_path, filename)
+
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(response.text)
+
+        save_scraping_metadata(folder_path, f"walmart_search:{query}", params, "search_results", filename=filename)
+
+        try:
+            results = json.loads(response.text)
+            result_count = len(results.get("results", []))
+        except json.JSONDecodeError:
+            result_count = "unknown (invalid JSON)"
+
+        base_response = (f"Walmart search complete:\n"
+                         f"Query: \"{query}\"\n"
+                         f"Results: {result_count}\n"
+                         f"Saved to: {file_path}")
+
+        if return_content:
+            return f"{base_response}\n\nCONTENT:\n{response.text}"
+        else:
+            return base_response
+
+# ======================================================================================
+# Tool 7: Walmart Product API
+# ======================================================================================
+
+class WalmartProductInput(BaseModel):
+    """Input model for the Walmart Product tool."""
+    product_id: str = Field(description="The ID of the Walmart product")
+    params: Optional[Dict[str, Any]] = Field(
+        default_factory=dict,
+        description="Optional parameters for the Walmart Product API"
+    )
+    results_folder: Optional[str] = Field(
+        default="scraping_results",
+        description="Base folder to save results"
+    )
+    return_content: Optional[bool] = Field(
+        default=False,
+        description="Whether to return the product data in the response"
+    )
+
+    @field_validator('params', mode='before')
+    @classmethod
+    def validate_params(cls, v: Any) -> Any:
+        return str_to_dict_validator(v)
+
+class WalmartProductTool(BaseTool):
+    """
+    Retrieves detailed information for a specific Walmart product using its ID.
+    All results are automatically saved to a JSON file.
+    """
+    name: str = "walmart_product"
+    description: str = (
+        "Retrieves detailed information for a specific Walmart product using its ID. "
+        "All results are automatically saved to a JSON file."
+        """
+        SUPPORTED PARAMS:
+        - "add_html": true/false - Include the full HTML of the product page in the JSON response (default: false).
+        - "delivery_zip": "72716" - ZIP code to check for local delivery options and product availability.
+        - "device": "desktop" / "mobile" / "tablet" - Device type to simulate for the request (default: desktop).
+        - "domain": "com" / "mx" / "ca" - The Walmart top-level domain to use for the request (e.g., com for US, ca for Canada).
+        - "light_request": true/false - Perform a light, faster request. Set to false to force a full JavaScript render (default: false).
+        - "store_id": "1234" - A specific Walmart store ID to check for local inventory and pricing.
+        """
+    )
+    args_schema: Type[BaseModel] = WalmartProductInput
+    api_key: str
+
+    def _run(self, product_id: str, params: Optional[Dict[str, Any]] = None,
+             results_folder: str = "scraping_results", return_content: bool = False) -> str:
+        params = params or {}
+        api_url = "https://app.scrapingbee.com/api/v1/walmart/product"
+        request_params = {'api_key': self.api_key, 'product_id': product_id, **params}
+
+        try:
+            response = requests.get(api_url, params=request_params, headers={'User-Agent': 'LangChain'}, timeout=120)
+            response.raise_for_status()
+        except requests.exceptions.RequestException as e:
+            return f"Error during Walmart Product API call: {getattr(e.response, 'text', str(e))}"
+
+        folder_path = create_results_folder(results_folder)
+        filename = f"walmart_product_{sanitize_filename(product_id)}.json"
+        file_path = os.path.join(folder_path, filename)
+
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(response.text)
+
+        save_scraping_metadata(folder_path, f"walmart_product:{product_id}", params, "product_data", filename=filename)
+
+        base_response = (f"Walmart product data retrieved:\n"
+                         f"Product ID: \"{product_id}\"\n"
+                         f"Saved to: {file_path}")
+
+        if return_content:
+            return f"{base_response}\n\nCONTENT:\n{response.text}"
+        else:
+            return base_response
+
+# ======================================================================================
+# Tool 8: ChatGPT API
+# ======================================================================================
+
+class ChatGPTInput(BaseModel):
+    """Input model for the ChatGPT tool."""
+    prompt: str = Field(description="The prompt you want to send to the GPT model")
+    params: Optional[Dict[str, Any]] = Field(
+        default_factory=dict,
+        description="Optional parameters for the ChatGPT API"
+    )
+    results_folder: Optional[str] = Field(
+        default="scraping_results",
+        description="Base folder to save results"
+    )
+    return_content: Optional[bool] = Field(
+        default=False,
+        description="Whether to return the API response in the output"
+    )
+
+    @field_validator('params', mode='before')
+    @classmethod
+    def validate_params(cls, v: Any) -> Any:
+        return str_to_dict_validator(v)
+
+class ChatGPTTool(BaseTool):
+    """
+    Interacts with the ChatGPT API for conversational AI tasks. The response is saved to a JSON file.
+    """
+    name: str = "chat_gpt"
+    description: str = (
+        "Interacts with the ChatGPT API for conversational AI tasks. The response is saved to a JSON file."
+        """
+        SUPPORTED PARAMS:
+        - "add_html": true/false - Include the full HTML of the page in the results if web search is enabled (default: false).
+        - "country_code": "us" / "gb" / "de" etc. - Two-letter country code for the web search request to get localized search results.
+        - "search": true/false - Enable web search to provide the model with up-to-date information to answer the query (default: false).
+        """
+    )
+    args_schema: Type[BaseModel] = ChatGPTInput
+    api_key: str
+
+    def _run(self, prompt: str, params: Optional[Dict[str, Any]] = None,
+             results_folder: str = "scraping_results", return_content: bool = False) -> str:
+        params = params or {}
+        api_url = "https://app.scrapingbee.com/api/v1/chatgpt"
+        headers = {'User-Agent': 'LangChain', 'Content-Type': 'application/json'}
+        request_params = {'api_key': self.api_key, 'prompt': prompt, **params}
+
+        try:
+            response = requests.get(api_url, headers=headers, params=request_params, timeout=180)
+            response.raise_for_status()
+        except requests.exceptions.RequestException as e:
+            return f"Error during ChatGPT API call: {getattr(e.response, 'text', str(e))}"
+
+        folder_path = create_results_folder(results_folder)
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"chatgpt_response_{timestamp}.json"
+        file_path = os.path.join(folder_path, filename)
+
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(response.text)
+
+        # For metadata, we omit the potentially very large message payload for cleaner logs
+        logged_params = {**params, "prompt": "omitted for brevity"}
+        save_scraping_metadata(folder_path, "chat_gpt_api", logged_params, "api_response", filename=filename)
+
+        base_response = (f"ChatGPT API call successful:\n"
+                         f"Saved to: {file_path}")
+
+        if return_content:
+            return f"{base_response}\n\nCONTENT:\n{response.text}"
+        else:
+            return base_response
+
+# ======================================================================================
+# Tool 9: YouTube Metadata API
+# ======================================================================================
+
+class YouTubeMetadataInput(BaseModel):
+    """Input model for the YouTube Metadata tool."""
+    video_id: str = Field(description="YouTube video identifier (e.g., 'dQw4w9WgXcQ')")
+    results_folder: Optional[str] = Field(
+        default="scraping_results",
+        description="Base folder to save results"
+    )
+    return_content: Optional[bool] = Field(
+        default=False,
+        description="Whether to return the metadata in the response"
+    )
+
+
+class YouTubeMetadataTool(BaseTool):
+    """
+    Retrieves metadata for a YouTube video including title, description, view count,
+    likes, channel info, publish date, and more. All results are automatically saved to a JSON file.
+    """
+    name: str = "youtube_metadata"
+    description: str = (
+        "Retrieves comprehensive metadata for a YouTube video using its video ID. "
+        "Returns information such as title, description, view count, likes, channel info, "
+        "publish date, duration, thumbnails, tags, and more. "
+        "All results are automatically saved to a JSON file. "
+        "Use return_content=True to get the metadata in the response for analysis. "
+        """
+        REQUIRED PARAMS:
+        - "video_id": The YouTube video identifier (the part after 'v=' in a YouTube URL, e.g., 'dQw4w9WgXcQ')
+
+        EXAMPLE USAGE:
+        - To get metadata for https://www.youtube.com/watch?v=dQw4w9WgXcQ, use video_id="dQw4w9WgXcQ"
+        """
+    )
+    args_schema: Type[BaseModel] = YouTubeMetadataInput
+    api_key: str
+
+    def _run(self, video_id: str, results_folder: str = "scraping_results",
+             return_content: bool = False) -> str:
+        api_url = "https://app.scrapingbee.com/api/v1/youtube/metadata"
+        request_params = {'api_key': self.api_key, 'video_id': video_id}
+
+        try:
+            response = requests.get(api_url, params=request_params,
+                                    headers={'User-Agent': 'LangChain'}, timeout=120)
+            response.raise_for_status()
+        except requests.exceptions.RequestException as e:
+            return f"Error during YouTube Metadata API call: {getattr(e.response, 'text', str(e))}"
+
+        folder_path = create_results_folder(results_folder)
+        filename = f"youtube_metadata_{sanitize_filename(video_id)}.json"
+        file_path = os.path.join(folder_path, filename)
+
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(response.text)
+
+        save_scraping_metadata(folder_path, f"youtube_metadata:{video_id}",
+                               {"video_id": video_id}, "video_metadata", filename=filename)
+
+        # Try to extract key info for summary
+        try:
+            data = json.loads(response.text)
+            title = data.get("title", "Unknown")
+            channel = data.get("channel", {}).get("name", "Unknown")
+            views = data.get("view_count", "Unknown")
+            summary = f"Title: \"{title}\"\nChannel: {channel}\nViews: {views}"
+        except json.JSONDecodeError:
+            summary = "Video ID: " + video_id
+
+        base_response = (f"YouTube metadata retrieved:\n"
+                         f"{summary}\n"
+                         f"Saved to: {file_path}")
+
+        if return_content:
+            return f"{base_response}\n\nCONTENT:\n{response.text}"
+        else:
+            return base_response
+
+
+# ======================================================================================
+# Tool 10: YouTube Search API
+# ======================================================================================
+
+class YouTubeSearchInput(BaseModel):
+    """Input model for the YouTube Search tool."""
+    search: str = Field(description="The search terms for YouTube search")
+    params: Optional[Dict[str, Any]] = Field(
+        default_factory=dict,
+        description="""Optional parameters for the YouTube Search API. Must be a proper dictionary/object.
+            Examples:
+            {"sort_by": "view_count", "hd": true}
+            {"type": "video", "duration": "4-20", "upload_date": "this_week"}
+            {"live": true, "subtitles": true}"""
+    )
+    results_folder: Optional[str] = Field(
+        default="scraping_results",
+        description="Base folder to save results"
+    )
+    return_content: Optional[bool] = Field(
+        default=False,
+        description="Whether to return the search results in the response"
+    )
+
+    @field_validator('params', mode='before')
+    @classmethod
+    def validate_params(cls, v: Any) -> Any:
+        return str_to_dict_validator(v)
+
+
+class YouTubeSearchTool(BaseTool):
+    """
+    Performs a search on YouTube and retrieves video, channel, or playlist results.
+    Supports extensive filtering options for duration, quality, upload date, and more.
+    All results are automatically saved to a JSON file.
+    """
+    name: str = "youtube_search"
+    description: str = (
+        "Performs a search on YouTube and retrieves video, channel, or playlist results. "
+        "Supports extensive filtering options including video quality, duration, upload date, "
+        "and content type. All results are automatically saved to a JSON file. "
+        "Use return_content=True to get the results in the response for analysis. "
+        """
+        SUPPORTED PARAMS:
+        - "360": true/false - Return only 360-degree videos (default: false)
+        - "3d": true/false - Return only 3D videos (default: false)
+        - "4k": true/false - Return only 4K videos (default: false)
+        - "creative_commons": true/false - Return only videos with Creative Commons license (default: false)
+        - "duration": "<4" / "4-20" / ">20" - Filter by video duration in minutes
+        - "hd": true/false - Return only HD videos (default: false)
+        - "hdr": true/false - Return only HDR videos (default: false)
+        - "live": true/false - Return only live streams (default: false)
+        - "location": true/false - Return only videos with location metadata (default: false)
+        - "purchased": true/false - Return only purchased content (default: false)
+        - "sort_by": "rating" / "relevance" / "view_count" / "upload_date" - Sorting method (default: "relevance")
+        - "subtitles": true/false - Return only videos with subtitles/closed captions (default: false)
+        - "type": "video" / "channel" / "playlist" / "movie" - Result type to return
+        - "upload_date": "today" / "last_hour" / "this_week" / "this_month" / "this_year" - Filter by upload date
+        - "vr180": true/false - Return only VR180 videos (default: false)
+
+        EXAMPLE USAGE:
+        - Search for recent HD cooking tutorials: {"search": "cooking tutorial", "params": {"hd": true, "upload_date": "this_month", "type": "video"}}
+        - Find live gaming streams: {"search": "gaming", "params": {"live": true, "sort_by": "view_count"}}
+        """
+    )
+    args_schema: Type[BaseModel] = YouTubeSearchInput
+    api_key: str
+
+    def _run(self, search: str, params: Optional[Dict[str, Any]] = None,
+             results_folder: str = "scraping_results", return_content: bool = False) -> str:
+        params = params or {}
+        api_url = "https://app.scrapingbee.com/api/v1/youtube/search"
+        request_params = {'api_key': self.api_key, 'search': search, **params}
+
+        try:
+            response = requests.get(api_url, params=request_params,
+                                    headers={'User-Agent': 'LangChain'}, timeout=120)
+            response.raise_for_status()
+        except requests.exceptions.RequestException as e:
+            return f"Error during YouTube Search API call: {getattr(e.response, 'text', str(e))}"
+
+        folder_path = create_results_folder(results_folder)
+        filename = f"youtube_search_{sanitize_filename(search)}.json"
+        file_path = os.path.join(folder_path, filename)
+
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(response.text)
+
+        save_scraping_metadata(folder_path, f"youtube_search:{search}", params,
+                               "search_results", filename=filename)
+
+        # Try to count results
+        try:
+            results = json.loads(response.text)
+            # Handle different possible response structures
+            if isinstance(results, list):
+                result_count = len(results)
+            elif isinstance(results, dict):
+                result_count = len(results.get("results", results.get("videos", results.get("items", []))))
+            else:
+                result_count = "unknown"
+        except json.JSONDecodeError:
+            result_count = "unknown (invalid JSON)"
+
+        base_response = (f"YouTube search complete:\n"
+                         f"Query: \"{search}\"\n"
+                         f"Results: {result_count}\n"
+                         f"Filters: {params if params else 'None'}\n"
+                         f"Saved to: {file_path}")
+
+        if return_content:
+            return f"{base_response}\n\nCONTENT:\n{response.text}"
+        else:
+            return base_response
+
+
+# ======================================================================================
+# Tool 11: YouTube Trainability API
+# ======================================================================================
+
+class YouTubeTrainabilityInput(BaseModel):
+    """Input model for the YouTube Trainability tool."""
+    video_id: str = Field(description="YouTube video identifier (e.g., 'dQw4w9WgXcQ')")
+    results_folder: Optional[str] = Field(
+        default="scraping_results",
+        description="Base folder to save results"
+    )
+    return_content: Optional[bool] = Field(
+        default=False,
+        description="Whether to return the trainability data in the response"
+    )
+
+
+class YouTubeTrainabilityTool(BaseTool):
+    """
+    Checks the trainability status of a YouTube video - whether its content can be used
+    for AI/ML training purposes. All results are automatically saved to a JSON file.
+    """
+    name: str = "youtube_trainability"
+    description: str = (
+        "Checks the trainability status of a YouTube video - determines whether its content "
+        "can be used for AI/ML training purposes based on the video's settings and permissions. "
+        "This is useful for data collection and compliance checking before using video content "
+        "for machine learning applications. "
+        "All results are automatically saved to a JSON file. "
+        "Use return_content=True to get the trainability data in the response for analysis. "
+        """
+        REQUIRED PARAMS:
+        - "video_id": The YouTube video identifier (the part after 'v=' in a YouTube URL, e.g., 'dQw4w9WgXcQ')
+
+        EXAMPLE USAGE:
+        - To check trainability for https://www.youtube.com/watch?v=dQw4w9WgXcQ, use video_id="dQw4w9WgXcQ"
+        """
+    )
+    args_schema: Type[BaseModel] = YouTubeTrainabilityInput
+    api_key: str
+
+    def _run(self, video_id: str, results_folder: str = "scraping_results",
+             return_content: bool = False) -> str:
+        api_url = "https://app.scrapingbee.com/api/v1/youtube/trainability"
+        request_params = {'api_key': self.api_key, 'video_id': video_id}
+
+        try:
+            response = requests.get(api_url, params=request_params,
+                                    headers={'User-Agent': 'LangChain'}, timeout=120)
+            response.raise_for_status()
+        except requests.exceptions.RequestException as e:
+            return f"Error during YouTube Trainability API call: {getattr(e.response, 'text', str(e))}"
+
+        folder_path = create_results_folder(results_folder)
+        filename = f"youtube_trainability_{sanitize_filename(video_id)}.json"
+        file_path = os.path.join(folder_path, filename)
+
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(response.text)
+
+        save_scraping_metadata(folder_path, f"youtube_trainability:{video_id}",
+                               {"video_id": video_id}, "trainability_data", filename=filename)
+
+        # Try to extract trainability status for summary
+        try:
+            data = json.loads(response.text)
+            trainable = data.get("trainable", data.get("is_trainable", "Unknown"))
+            summary = f"Video ID: {video_id}\nTrainable: {trainable}"
+        except json.JSONDecodeError:
+            summary = f"Video ID: {video_id}"
+
+        base_response = (f"YouTube trainability check complete:\n"
+                         f"{summary}\n"
+                         f"Saved to: {file_path}")
+
+        if return_content:
+            return f"{base_response}\n\nCONTENT:\n{response.text}"
+        else:
+            return base_response
+
+
+# ======================================================================================
+# Tool 12: YouTube Transcript API
+# ======================================================================================
+
+class YouTubeTranscriptInput(BaseModel):
+    """Input model for the YouTube Transcript tool."""
+    video_id: str = Field(description="YouTube video identifier (e.g., 'dQw4w9WgXcQ')")
+    params: Optional[Dict[str, Any]] = Field(
+        default_factory=dict,
+        description="""Optional parameters for the YouTube Transcript API. Must be a proper dictionary/object.
+            Examples:
+            {"language": "es"}
+            {"transcript_origin": "uploader_provided"}
+            {"language": "fr", "transcript_origin": "auto_generated"}"""
+    )
+    results_folder: Optional[str] = Field(
+        default="scraping_results",
+        description="Base folder to save results"
+    )
+    return_content: Optional[bool] = Field(
+        default=False,
+        description="Whether to return the transcript in the response"
+    )
+
+    @field_validator('params', mode='before')
+    @classmethod
+    def validate_params(cls, v: Any) -> Any:
+        return str_to_dict_validator(v)
+
+
+class YouTubeTranscriptTool(BaseTool):
+    """
+    Retrieves the transcript/captions for a YouTube video. Supports multiple languages
+    and can fetch either auto-generated or uploader-provided transcripts.
+    All results are automatically saved to a JSON file.
+    """
+    name: str = "youtube_transcript"
+    description: str = (
+        "Retrieves the transcript/captions for a YouTube video. Supports multiple languages "
+        "and can fetch either auto-generated or uploader-provided transcripts. "
+        "Useful for content analysis, accessibility, translation, and search indexing. "
+        "All results are automatically saved to a JSON file. "
+        "Use return_content=True to get the transcript in the response for analysis. "
+        """
+        SUPPORTED PARAMS:
+        - "language": ISO language code for the transcript (default: "en")
+            Examples: "en" (English), "es" (Spanish), "fr" (French), "de" (German),
+                      "ja" (Japanese), "ko" (Korean), "zh" (Chinese), "pt" (Portuguese)
+        - "transcript_origin": "auto_generated" / "uploader_provided" - Choose the source of the transcript (default: "auto_generated")
+            - "auto_generated": YouTube's automatic speech recognition captions
+            - "uploader_provided": Captions uploaded by the video creator (usually more accurate)
+
+        EXAMPLE USAGE:
+        - Get English auto-generated transcript: {"video_id": "dQw4w9WgXcQ"}
+        - Get Spanish uploader-provided transcript: {"video_id": "dQw4w9WgXcQ", "params": {"language": "es", "transcript_origin": "uploader_provided"}}
+        """
+    )
+    args_schema: Type[BaseModel] = YouTubeTranscriptInput
+    api_key: str
+
+    def _run(self, video_id: str, params: Optional[Dict[str, Any]] = None,
+             results_folder: str = "scraping_results", return_content: bool = False) -> str:
+        params = params or {}
+        api_url = "https://app.scrapingbee.com/api/v1/youtube/transcript"
+        request_params = {'api_key': self.api_key, 'video_id': video_id, **params}
+
+        try:
+            response = requests.get(api_url, params=request_params,
+                                    headers={'User-Agent': 'LangChain'}, timeout=120)
+            response.raise_for_status()
+        except requests.exceptions.RequestException as e:
+            return f"Error during YouTube Transcript API call: {getattr(e.response, 'text', str(e))}"
+
+        folder_path = create_results_folder(results_folder)
+        language = params.get("language", "en")
+        origin = params.get("transcript_origin", "auto")
+        filename = f"youtube_transcript_{sanitize_filename(video_id)}_{language}_{origin}.json"
+        file_path = os.path.join(folder_path, filename)
+
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(response.text)
+
+        save_scraping_metadata(folder_path, f"youtube_transcript:{video_id}",
+                               {"video_id": video_id, **params}, "transcript", filename=filename)
+
+        # Try to get transcript info for summary
+        try:
+            data = json.loads(response.text)
+            if isinstance(data, list):
+                segment_count = len(data)
+                # Calculate total duration if available
+                if segment_count > 0 and "start" in data[-1]:
+                    duration = data[-1].get("start", 0) + data[-1].get("duration", 0)
+                    summary = f"Video ID: {video_id}\nLanguage: {language}\nSegments: {segment_count}\nDuration: ~{int(duration)}s"
+                else:
+                    summary = f"Video ID: {video_id}\nLanguage: {language}\nSegments: {segment_count}"
+            elif isinstance(data, dict):
+                transcript_text = data.get("transcript", data.get("text", ""))
+                char_count = len(transcript_text) if transcript_text else 0
+                summary = f"Video ID: {video_id}\nLanguage: {language}\nCharacters: {char_count}"
+            else:
+                summary = f"Video ID: {video_id}\nLanguage: {language}"
+        except json.JSONDecodeError:
+            summary = f"Video ID: {video_id}\nLanguage: {language}"
+
+        base_response = (f"YouTube transcript retrieved:\n"
+                         f"{summary}\n"
+                         f"Saved to: {file_path}")
+
+        if return_content:
+            return f"{base_response}\n\nCONTENT:\n{response.text}"
+        else:
+            return base_response

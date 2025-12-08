@@ -1,6 +1,20 @@
 from importlib import metadata
 
-from langchain_scrapingbee.tools import ScrapeUrlTool, GoogleSearchTool, CheckUsageTool
+from langchain_scrapingbee.tools import (
+    ScrapeUrlTool,
+    GoogleSearchTool,
+    CheckUsageTool,
+    AmazonSearchTool,
+    AmazonProductTool,
+    WalmartSearchTool,
+    WalmartProductTool,
+    ChatGPTTool,
+    YouTubeMetadataTool,
+    YouTubeSearchTool,
+    YouTubeTrainabilityTool,
+    YouTubeTranscriptTool,
+)
+
 
 try:
     __version__ = metadata.version(__package__)
@@ -13,4 +27,13 @@ __all__ = [
     "ScrapeUrlTool",
     "GoogleSearchTool",
     "CheckUsageTool",
+    "AmazonSearchTool",
+    "AmazonProductTool",
+    "WalmartSearchTool",
+    "WalmartProductTool",
+    "ChatGPTTool",
+    "YouTubeMetadataTool",
+    "YouTubeSearchTool",
+    "YouTubeTrainabilityTool",
+    "YouTubeTranscriptTool",
 ]

@@ -6,7 +6,20 @@ import shutil
 from typing import Type
 
 from langchain_tests.integration_tests import ToolsIntegrationTests
-from langchain_scrapingbee.tools import ScrapeUrlTool, GoogleSearchTool, CheckUsageTool
+from langchain_scrapingbee.tools import (
+    ScrapeUrlTool,
+    GoogleSearchTool,
+    CheckUsageTool,
+    AmazonSearchTool,
+    AmazonProductTool,
+    WalmartSearchTool,
+    WalmartProductTool,
+    ChatGPTTool,
+    YouTubeMetadataTool,
+    YouTubeSearchTool,
+    YouTubeTrainabilityTool,
+    YouTubeTranscriptTool,
+)
 
 
 class TestScrapeUrlToolIntegration(ToolsIntegrationTests):
@@ -267,6 +280,302 @@ class TestCheckUsageToolIntegration(ToolsIntegrationTests):
         # Should be valid JSON or contain usage stats
         assert "{" in result or "credits" in result.lower()
 
+
+class TestAmazonSearchToolIntegration(ToolsIntegrationTests):
+    @property
+    def tool_constructor(self) -> Type[AmazonSearchTool]:
+        return AmazonSearchTool
+
+    @property
+    def tool_constructor_params(self) -> dict:
+        api_key = os.environ.get("SCRAPINGBEE_API_KEY")
+        if not api_key:
+            pytest.skip("SCRAPINGBEE_API_KEY environment variable not set")
+        return {"api_key": api_key}
+
+    @property
+    def tool_invoke_params_example(self) -> dict:
+        return {"query": "laptop", "results_folder": "temp_folder"}
+
+    def test_amazon_search_success(self):
+        tool = self.tool_constructor(**self.tool_constructor_params)
+        with tempfile.TemporaryDirectory(prefix="temp_folder") as temp_dir:
+            result = tool._run(
+                query="macbook air", results_folder=temp_dir, return_content=True
+            )
+            assert "Amazon search complete" in result
+            assert "results" in result.lower()
+            assert "Saved to" in result
+            assert len(glob.glob(os.path.join(temp_dir, "*"))) > 0
+
+
+class TestAmazonProductToolIntegration(ToolsIntegrationTests):
+    @property
+    def tool_constructor(self) -> Type[AmazonProductTool]:
+        return AmazonProductTool
+
+    @property
+    def tool_constructor_params(self) -> dict:
+        api_key = os.environ.get("SCRAPINGBEE_API_KEY")
+        if not api_key:
+            pytest.skip("SCRAPINGBEE_API_KEY environment variable not set")
+        return {"api_key": api_key}
+
+    @property
+    def tool_invoke_params_example(self) -> dict:
+        return {"query": "B0DPDRNSXV", "results_folder": "temp_folder"}
+
+    def test_amazon_product_success(self):
+        tool = self.tool_constructor(**self.tool_constructor_params)
+        with tempfile.TemporaryDirectory(prefix="temp_folder") as temp_dir:
+            result = tool._run(
+                query="B0DPDRNSXV", results_folder=temp_dir, return_content=True
+            )
+            assert "Amazon product data retrieved" in result
+            assert "B0DPDRNSXV" in result
+            assert "Saved to" in result
+            assert len(glob.glob(os.path.join(temp_dir, "*"))) > 0
+
+
+class TestWalmartSearchToolIntegration(ToolsIntegrationTests):
+    @property
+    def tool_constructor(self) -> Type[WalmartSearchTool]:
+        return WalmartSearchTool
+
+    @property
+    def tool_constructor_params(self) -> dict:
+        api_key = os.environ.get("SCRAPINGBEE_API_KEY")
+        if not api_key:
+            pytest.skip("SCRAPINGBEE_API_KEY environment variable not set")
+        return {"api_key": api_key}
+
+    @property
+    def tool_invoke_params_example(self) -> dict:
+        return {"query": "coffee maker", "results_folder": "temp_folder"}
+
+    def test_walmart_search_success(self):
+        tool = self.tool_constructor(**self.tool_constructor_params)
+        with tempfile.TemporaryDirectory(prefix="temp_folder") as temp_dir:
+            result = tool._run(
+                query="keurig", results_folder=temp_dir, return_content=True
+            )
+            assert "Walmart search complete" in result
+            assert "results" in result.lower()
+            assert "Saved to" in result
+            assert len(glob.glob(os.path.join(temp_dir, "*"))) > 0
+
+
+class TestWalmartProductToolIntegration(ToolsIntegrationTests):
+    @property
+    def tool_constructor(self) -> Type[WalmartProductTool]:
+        return WalmartProductTool
+
+    @property
+    def tool_constructor_params(self) -> dict:
+        api_key = os.environ.get("SCRAPINGBEE_API_KEY")
+        if not api_key:
+            pytest.skip("SCRAPINGBEE_API_KEY environment variable not set")
+        return {"api_key": api_key}
+
+    @property
+    def tool_invoke_params_example(self) -> dict:
+        return {"product_id": "454408250", "results_folder": "temp_folder"}
+
+    def test_walmart_product_success(self):
+        tool = self.tool_constructor(**self.tool_constructor_params)
+        with tempfile.TemporaryDirectory(prefix="temp_folder") as temp_dir:
+            result = tool._run(
+                product_id="454408250", results_folder=temp_dir, return_content=True
+            )
+            assert "Walmart product data retrieved" in result
+            assert "454408250" in result
+            assert "Saved to" in result
+            assert len(glob.glob(os.path.join(temp_dir, "*"))) > 0
+
+
+class TestChatGPTToolIntegration(ToolsIntegrationTests):
+    @property
+    def tool_constructor(self) -> Type[ChatGPTTool]:
+        return ChatGPTTool
+
+    @property
+    def tool_constructor_params(self) -> dict:
+        api_key = os.environ.get("SCRAPINGBEE_API_KEY")
+        if not api_key:
+            pytest.skip("SCRAPINGBEE_API_KEY environment variable not set")
+        return {"api_key": api_key}
+
+    @property
+    def tool_invoke_params_example(self) -> dict:
+        return {"prompt": "what is python", "results_folder": "temp_folder"}
+
+    def test_chatgpt_receives_valid_response(self):
+        """Test that a simple prompt receives a well-structured response."""
+        tool = self.tool_constructor(**self.tool_constructor_params)
+        with tempfile.TemporaryDirectory(prefix="temp_folder") as temp_dir:
+            result = tool._run(
+                prompt="What is the capital of France?",
+                results_folder=temp_dir,
+                return_content=True,
+            )
+            assert "ChatGPT API call successful" in result
+            assert "CONTENT" in result
+            # Check for the presence of a key from the JSON structure,
+            # confirming a successful response without checking the LLM's answer.
+            assert '"results_markdown"' in result
+            assert len(glob.glob(os.path.join(temp_dir, "*"))) > 0
+
+    def test_chatgpt_with_search_receives_valid_response(self):
+        """Test that a prompt with search enabled receives a well-structured response."""
+        tool = self.tool_constructor(**self.tool_constructor_params)
+        with tempfile.TemporaryDirectory(prefix="temp_folder") as temp_dir:
+            result = tool._run(
+                prompt="What is the ticker symbol for the NVIDIA corporation?",
+                params={"search": True},
+                results_folder=temp_dir,
+                return_content=True,
+            )
+            assert "ChatGPT API call successful" in result
+            # Check for a different key to confirm a valid JSON structure.
+            assert '"llm_model"' in result
+            assert len(glob.glob(os.path.join(temp_dir, "*"))) > 0
+
+class TestYouTubeMetadataToolIntegration(ToolsIntegrationTests):
+    @property
+    def tool_constructor(self) -> Type[YouTubeMetadataTool]:
+        return YouTubeMetadataTool
+
+    @property
+    def tool_constructor_params(self) -> dict:
+        api_key = os.environ.get("SCRAPINGBEE_API_KEY")
+        if not api_key:
+            pytest.skip("SCRAPINGBEE_API_KEY environment variable not set")
+        return {"api_key": api_key}
+
+    @property
+    def tool_invoke_params_example(self) -> dict:
+        return {"video_id": "dQw4w9WgXcQ", "results_folder": "temp_folder"}
+
+    def test_youtube_metadata_success(self):
+        tool = self.tool_constructor(**self.tool_constructor_params)
+        with tempfile.TemporaryDirectory(prefix="temp_folder") as temp_dir:
+            result = tool._run(
+                video_id="dQw4w9WgXcQ", results_folder=temp_dir, return_content=True
+            )
+            assert "YouTube metadata retrieved" in result
+            assert "dQw4w9WgXcQ" in result or "Saved to" in result
+            assert len(glob.glob(os.path.join(temp_dir, "*"))) > 0
+
+
+class TestYouTubeSearchToolIntegration(ToolsIntegrationTests):
+    @property
+    def tool_constructor(self) -> Type[YouTubeSearchTool]:
+        return YouTubeSearchTool
+
+    @property
+    def tool_constructor_params(self) -> dict:
+        api_key = os.environ.get("SCRAPINGBEE_API_KEY")
+        if not api_key:
+            pytest.skip("SCRAPINGBEE_API_KEY environment variable not set")
+        return {"api_key": api_key}
+
+    @property
+    def tool_invoke_params_example(self) -> dict:
+        return {"search": "python tutorial", "results_folder": "temp_folder"}
+
+    def test_youtube_search_success(self):
+        tool = self.tool_constructor(**self.tool_constructor_params)
+        with tempfile.TemporaryDirectory(prefix="temp_folder") as temp_dir:
+            result = tool._run(
+                search="movie trailers",
+                params={"sort_by": "relevance"},
+                results_folder=temp_dir,
+                return_content=True
+            )
+            assert "YouTube search complete" in result
+            assert "results" in result.lower()
+            assert "Saved to" in result
+            assert len(glob.glob(os.path.join(temp_dir, "*"))) > 0
+
+    def test_youtube_search_with_filters(self):
+        tool = self.tool_constructor(**self.tool_constructor_params)
+        with tempfile.TemporaryDirectory(prefix="temp_folder") as temp_dir:
+            result = tool._run(
+                search="cooking tutorial",
+                params={"hd": True, "sort_by": "view_count"},
+                results_folder=temp_dir,
+                return_content=True
+            )
+            assert "YouTube search complete" in result
+            assert "Saved to" in result
+            assert len(glob.glob(os.path.join(temp_dir, "*"))) > 0
+
+
+class TestYouTubeTrainabilityToolIntegration(ToolsIntegrationTests):
+    @property
+    def tool_constructor(self) -> Type[YouTubeTrainabilityTool]:
+        return YouTubeTrainabilityTool
+
+    @property
+    def tool_constructor_params(self) -> dict:
+        api_key = os.environ.get("SCRAPINGBEE_API_KEY")
+        if not api_key:
+            pytest.skip("SCRAPINGBEE_API_KEY environment variable not set")
+        return {"api_key": api_key}
+
+    @property
+    def tool_invoke_params_example(self) -> dict:
+        return {"video_id": "dQw4w9WgXcQ", "results_folder": "temp_folder"}
+
+    def test_youtube_trainability_success(self):
+        tool = self.tool_constructor(**self.tool_constructor_params)
+        with tempfile.TemporaryDirectory(prefix="temp_folder") as temp_dir:
+            result = tool._run(
+                video_id="dQw4w9WgXcQ", results_folder=temp_dir, return_content=True
+            )
+            assert "YouTube trainability check complete" in result
+            assert "Saved to" in result
+            assert len(glob.glob(os.path.join(temp_dir, "*"))) > 0
+
+
+class TestYouTubeTranscriptToolIntegration(ToolsIntegrationTests):
+    @property
+    def tool_constructor(self) -> Type[YouTubeTranscriptTool]:
+        return YouTubeTranscriptTool
+
+    @property
+    def tool_constructor_params(self) -> dict:
+        api_key = os.environ.get("SCRAPINGBEE_API_KEY")
+        if not api_key:
+            pytest.skip("SCRAPINGBEE_API_KEY environment variable not set")
+        return {"api_key": api_key}
+
+    @property
+    def tool_invoke_params_example(self) -> dict:
+        return {"video_id": "dQw4w9WgXcQ", "results_folder": "temp_folder"}
+
+    def test_youtube_transcript_success(self):
+        tool = self.tool_constructor(**self.tool_constructor_params)
+        with tempfile.TemporaryDirectory(prefix="temp_folder") as temp_dir:
+            result = tool._run(
+                video_id="dQw4w9WgXcQ", results_folder=temp_dir, return_content=True
+            )
+            assert "YouTube transcript retrieved" in result
+            assert "Saved to" in result
+            assert len(glob.glob(os.path.join(temp_dir, "*"))) > 0
+
+    def test_youtube_transcript_with_language(self):
+        tool = self.tool_constructor(**self.tool_constructor_params)
+        with tempfile.TemporaryDirectory(prefix="temp_folder") as temp_dir:
+            result = tool._run(
+                video_id="dQw4w9WgXcQ",
+                params={"language": "en"},
+                results_folder=temp_dir,
+                return_content=True
+            )
+            assert "YouTube transcript retrieved" in result
+            assert "en" in result
+            assert len(glob.glob(os.path.join(temp_dir, "*"))) > 0
 
 # Additional integration tests for edge cases and real-world scenarios
 class TestAdvancedIntegrationScenarios:
