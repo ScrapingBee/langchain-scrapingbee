@@ -16,6 +16,7 @@ scraping_prompt = (
         "For text content, returns the scraped HTML/text directly. "
         "Use params for screenshots: {'screenshot_full_page': 'true'} or data extraction: {'extract_rules': '{...}'}. "
         "Supports JavaScript rendering, mobile simulation, proxy geolocation, and AI-powered extraction."
+        "When unsure which scraping config a site needs, prefer params {'mode': 'auto'} to let ScrapingBee pick the cheapest config that succeeds (charged only for the winning config); optionally cap spend with 'max_cost'. Do not combine mode='auto' with render_js/premium_proxy/stealth_proxy."
         "params should be a valid dictionary"
         "For non-text files, use 'render_js=false'"
         "Before running ai_query and ai_extract_rules, scrapingbee converts the HTML content to markdown. So the ai model only have access to markdown not the html"
@@ -79,6 +80,8 @@ scraping_prompt = (
                 - Stealth proxy limitations: No infinite_scroll, evaluate, custom headers/cookies
             ]
         - "json_response": true - Wrap response in JSON format with metadata. This can also be used to find internal xhr requests
+        - "max_cost": int >= 1 - Only valid with mode='auto'. Caps the credits a request may spend: escalation climbs only to the costliest tier whose cost is <= max_cost (e.g. max_cost=25 stops at premium+JS, max_cost=10 stops at premium). Amount charged never exceeds it. Omit for uncapped (stealth reachable).
+        - "mode": "auto" - Cheapest-first auto-escalation: ScrapingBee tries scraping configs from cheapest to most expensive (1cr basic -> 5cr JS -> 10cr premium -> 25cr premium+JS -> 75cr stealth), stops at the first that succeeds, and charges ONLY for the winning config (0 credits if all fail). Use this when you don't know which config a site needs and want the cheapest one that works. GET-only. The credits charged are returned in the "Spb-auto-cost" response header. Must NOT be combined with render_js, premium_proxy, stealth_proxy, or transparent_status_code (the API returns 400). Optionally pair with max_cost to cap spend.
         - "own_proxy": "protocol://user:pass@host:port" - Use your own proxy
         - "premium_proxy": true - Use premium proxy pool (10-25 credits)
         - "render_js": true/false - Enable JS rendering (default: true)
@@ -230,7 +233,8 @@ class ScrapeUrlInput(BaseModel):
         Examples:
         {"screenshot_full_page": true, "wait": 2000}
         {"extract_rules": '{"title": "h1", "price": ".price"}'}
-        {"country_code": "gb", "device": "mobile"}"""
+        {"country_code": "gb", "device": "mobile"}
+        {"mode": "auto", "max_cost": 25}"""
     )
     headers: Optional[Dict[str, str]] = Field(  # ADD THIS
         default_factory=dict,

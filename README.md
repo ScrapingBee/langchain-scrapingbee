@@ -81,6 +81,18 @@ html_result = scrape_tool.invoke({
 })
 print(html_result)
 
+# --- Test Case 1b: Auto-Mode (let ScrapingBee pick the cheapest config that works) ---
+# mode='auto' tries configs cheapest-first and charges only for the winning one
+# (0 credits if all fail). max_cost caps the spend. The credits charged come back
+# in the "Spb-auto-cost" response header.
+# Note: mode='auto' must NOT be combined with render_js/premium_proxy/stealth_proxy.
+print("\n--- 1b. Testing ScrapeUrlTool (Auto-Mode) ---")
+auto_result = scrape_tool.invoke({
+    'url': 'http://httpbin.org/html',
+    'params': {'mode': 'auto', 'max_cost': 25}
+})
+print(auto_result)
+
 # --- Test Case 2: Scrape a PDF file ---
 print("\n--- 2. Testing ScrapeUrlTool (PDF) ---")
 pdf_result = scrape_tool.invoke({
