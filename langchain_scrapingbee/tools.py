@@ -17,10 +17,10 @@ scraping_prompt = (
         "Use params for screenshots: {'screenshot_full_page': 'true'} or data extraction: {'extract_rules': '{...}'}. "
         "Supports JavaScript rendering, mobile simulation, proxy geolocation, and AI-powered extraction."
         "params should be a valid dictionary"
-        "For non-text files, use 'render_js=false'"
+        "For non-text files, use 'render_js=false'. Non-HTML downloads are limited to 2 MB per request."
         "Before running ai_query and ai_extract_rules, scrapingbee converts the HTML content to markdown. So the ai model only have access to markdown not the html"
         "EXTREMELY IMPORTANT: Must use valid parameters and instructions, do not make up non-existent parameters and instructions"
-        "Can also perform Google Search with custom_google=true"
+        "For Google SERPs, prefer the dedicated google_search or fast_search tools."
         """
         SUPPORTED PARAMS:
         - "ai_extract_rules": "JSON string" - AI-based extraction with structured schema (+5 credits)
@@ -39,10 +39,10 @@ scraping_prompt = (
         - "block_ads": true - Block advertisements
         - "block_resources": true - Block images/CSS for faster text extraction (default: true)
         - "cookies": "name=value,domain=example.com;name2=value2" - Custom cookies with attributes
-        - "country_code": "us"/"gb"/"de" etc. - Premium proxy location (ISO 3166)
-        - "custom_google": true - Must use it when scraping Google domains (20 credits)
+        - "country_code": "us"/"gb"/"de" etc. - Premium proxy location (lower-case ISO 3166-1)
+        - "custom_google": true - Version-sensitive parameter for scraping Google domains directly; prefer the google_search tool for structured SERPs
         - "device": "desktop"/"mobile" - Device simulation
-        - "extract_rules": CSS/XPath extraction rules, example: '{"title": "h1", "links": {"selector": "a", "type": "list", "output": "@href"}}'
+        - "extract_rules": CSS/XPath extraction rules, example: '{"page_title": "title", "first_heading": "h1", "links": {"selector": "a", "type": "list", "output": "@href"}}' (use the "title" selector for the page <title> tag, "h1" for the visible heading)
             [
                 - use this feature only if CSS or XPath selectors are known or if the request requires clean text or markdown
                 - type only accepts item or list
@@ -57,7 +57,7 @@ scraping_prompt = (
                 - Providing any other options inside data extraction would result in an error.
             ]
         - "forward_headers": true - Forward your headers + ScrapingBee headers
-        - "forward_headers_pure": true - Forward only your specified headers
+        - "forward_headers_pure": true - Forward only your specified headers (only useful with render_js=false)
         - "js_scenario": JavaScript execution instructions, example: '{"instructions": [{"click": "#button"}, {"wait": 1000}]}'
             [
                 - Structure: {"strict": true/false, "instructions": [{"instruction1":"value1"},{"instruction2":"value2"}]}
@@ -76,24 +76,27 @@ scraping_prompt = (
                 - MOST IMPORTANT: Ensure the instuctions structure is valid. For example: {"instructions": [{"click": "#button"}, {"wait": 1000}]}
                 - Selectors: CSS or XPath (XPath must start with /)
                 - Timeout: 40 seconds maximum
-                - Stealth proxy limitations: No infinite_scroll, evaluate, custom headers/cookies
+                - Stealth proxy limitations: No infinite_scroll, timeout, custom headers/cookies, or evaluate_results in a JSON response
             ]
         - "json_response": true - Wrap response in JSON format with metadata. This can also be used to find internal xhr requests
-        - "own_proxy": "protocol://user:pass@host:port" - Use your own proxy
-        - "premium_proxy": true - Use premium proxy pool (10-25 credits)
+        - "max_cost": 25 - Only valid with mode=auto; caps the most expensive tier auto mode is allowed to try (e.g., 25 prevents escalation to stealth)
+        - "mode": "auto" - Automatic escalation from cheapest to most expensive configuration (rotating 1/5 credits -> premium 10/25 -> stealth 75) until one succeeds; only the successful tier is billed, a total failure costs 0. GET-only. Do NOT combine with render_js, premium_proxy, stealth_proxy, or transparent_status_code (returns 400). It never adds js_scenario, waits, headers, or cookies - pass those yourself
+        - "own_proxy": "protocol://user:pass@host:port" - Use your own proxy (port defaults to 1080 if omitted)
+        - "premium_proxy": true - Use premium/residential proxy pool (10 credits without JS rendering, 25 with)
         - "render_js": true/false - Enable JS rendering (default: true)
         - "return_page_markdown": true - Return the page content in markdown format
         - "return_page_source": true - Return original HTML before JS rendering
         - "return_page_text": true - Return the text content of the page you want to scrape
         - "scraping_config": config_name (Must only use if provided by user) - Use a pre-saved request configuration on your request
-        - "screenshot": true - Screenshot of viewport
+        - "screenshot": true - Screenshot of viewport (requires JS rendering; forces block_resources=false)
         - "screenshot_full_page": true - Full page screenshot
         - "screenshot_selector": "css-selector" - Screenshot specific element
-        - "session_id": 123 - Use persistent session (1-10000000, lasts 5 minutes)
-        - "stealth_proxy": true - Use stealth proxies for difficult sites or when the previous request fails (75 credits)
-        - "timeout": 60000 - Request timeout in milliseconds (1000-140000)
-        - "transparent_status_code": true - Return original HTTP status codes
-        - "wait": 3000 - Wait milliseconds before capture (0-35000)
+        - "session_id": 123 - Reuse the same IP for 5 minutes (random integer, 0-10000000)
+        - "stealth_proxy": true - Use stealth proxies for difficult sites or when the previous request fails (75 credits, requires JS rendering). Not supported: infinite_scroll, custom headers/cookies, timeout, evaluate_results
+        - "tag": "my-label" - Arbitrary label returned in response headers; does not affect scraping
+        - "timeout": 140000 - Request timeout in milliseconds (1000-140000, default: 140000). Lowering it can reduce success rate
+        - "transparent_status_code": true - Return original HTTP status codes (every request is billed and target 500s are not retried)
+        - "wait": 3000 - Wait milliseconds before capture (0-35000, runs after wait_for)
         - "wait_browser": "domcontentloaded"/"load"/"networkidle0"/"networkidle2" - Browser wait condition
         - "wait_for": "css-selector" - Wait for element to appear
         - "window_height": 1080 - Viewport height in pixels
@@ -105,6 +108,7 @@ scraping_prompt = (
         SCRAPING STRATEGY:
         - Research Well using Google Search API: When you lack sufficient information, use Google Search API to find it first before attempting to scrape pages. You can use it multiple times before and in-between scrapes
         - Prefer AI Extraction Rules over Data Extraction rules: Use extract_rules if selector is known, otherwise use extract_rules to get the body in html to find the selector, do not use ai_query or ai_extract_rules for finding selector and do not guess selector
+        - Proxy escalation: Start without a proxy. If a target is blocked, retry with {"premium_proxy": true}, then {"stealth_proxy": true}. Alternatively use {"mode": "auto"} (optionally with "max_cost") to let ScrapingBee escalate automatically and bill only the tier that succeeds
         """
     )
 
@@ -411,7 +415,7 @@ class GoogleSearchInput(BaseModel):
         description="""Optional parameters dictionary for Google Search API. Must be a proper dictionary/object.
 Examples:
 {"search_type": "news", "country_code": "gb"}
-{"nb_results": 20, "language": "es"}
+{"pages": 2, "language": "es"}
 {"search_type": "images", "device": "mobile"}"""
     )
     results_folder: Optional[str] = Field(
@@ -435,7 +439,7 @@ class GoogleSearchTool(BaseTool):
     """
     name: str = "google_search"
     description: str = (
-        "Performs Google searches across different search types (web, news, images, maps). "
+        "Performs Google searches across different search types (classic web, news, maps, lens, shopping, images, ai_mode, ads). "
         "All results are automatically saved to disk to conserve AI tokens. "
         "For image searches: Downloads base64 images and saves image URLs to image_links.txt. "
         "For other searches: Saves JSON results to file. "
@@ -445,16 +449,27 @@ class GoogleSearchTool(BaseTool):
         "params should be a valid dictionary. "
         """
         SUPPORTED PARAMS:
-        - "add_html": true - Include full HTML of result pages in response
+        - "add_html": true - Include full HTML of result pages in response (default: false)
         - "country_code": "us"/"gb"/"de" etc. - Country for localized results (default: "us")
-        - "device": "desktop"/"mobile" - Device type for search (default: "desktop")
-        - "extra_params": "safe=active&filter=0" - Additional Google URL parameters
+        - "date_range": "past_hour"/"past_day"/"past_week"/"past_month"/"past_year" - Time filter (classic, news, and images only)
+        - "device": "desktop"/"mobile" - Device type for search (default: "desktop"; news is unavailable on mobile)
+        - "extra_params": "safe=active&filter=0" - Additional URL-encoded Google URL parameters (encode & as %26 for multiple values)
         - "language": "en"/"es"/"fr" etc. - Language for results (default: "en")
-        - "light_request": true/false default is true, disable it if not getting required results
-        - "nb_results": 50 - Number of results to return (default: 100, max varies)
+        - "latitude"/"longitude": decimal degrees - Geographic point for localized results (must be supplied together)
+        - "light_request": true/false - Fast non-browser request (default: true). Set false for a full browser request or when AI Overviews are needed
+        - "max_price"/"min_price": number - Price filters (shopping search only, native marketplace currency)
         - "nfpr": true - Exclude auto-corrected spelling results
         - "page": 2 - Page number for pagination (default: 1)
-        - "search_type": "classic"/"news"/"maps"/"images" - Type of Google search (default: "classic")
+        - "pages": 3 - Number of consecutive Google pages to fetch and combine in one response (max: 10, 3 or fewer recommended)
+        - "radius": meters - Search radius (takes effect only with latitude and longitude)
+        - "search_type": "classic"/"news"/"maps"/"lens"/"shopping"/"images"/"ai_mode"/"ads" - Type of Google search (default: "classic")
+        - "sort_by": "relevance"/"reviews"/"price_asc"/"price_desc" - Sorting (shopping search only)
+        - "tag": "my-label" - Arbitrary label returned in response headers; does not affect scraping
+
+        NOTES:
+        - Cost: 10 credits per light request, 15 with light_request=false
+        - search_type=lens requires an image URL in the search input; search_type=ai_mode accepts at most 400 input characters
+        - AI Overviews are a response field (ai_overviews), not a search_type, and require light_request=false
         """
     )
     args_schema: Type[BaseModel] = GoogleSearchInput
@@ -695,7 +710,7 @@ class GoogleSearchTool(BaseTool):
         try:
             results = json.loads(response_text)
             result_count = 0
-            result_count = max([len(results.get("organic_results", [])), len(results.get("news_results", [])), len(results.get("maps_results", []))])
+            result_count = max([len(results.get("organic_results", [])), len(results.get("news_results", [])), len(results.get("map_results", results.get("maps_results", [])))])
         except:
             result_count = "unknown"
 
@@ -722,8 +737,9 @@ class CheckUsageTool(BaseTool):
     """Checks ScrapingBee API usage, remaining credits, and account limits. No parameters required."""
     name: str = "check_scrapingbee_usage"
     description: str = (
-        "Checks current ScrapingBee API usage statistics including remaining credits, "
-        "used credits, concurrency limits, and account status. Takes no parameters."
+        "Checks current ScrapingBee API usage statistics. Returns max_api_credit, "
+        "used_api_credit, max_concurrency, current_concurrency, and renewal_subscription_date. "
+        "Takes no parameters. Rate-limited to 6 calls per minute and does not consume concurrency."
     )
     api_key: str
 
@@ -782,14 +798,23 @@ class AmazonSearchTool(BaseTool):
         """
         SUPPORTED PARAMS:
         - "add_html": true/false - Include the full HTML of the search result page in the JSON response (default: false).
-        - "autoselect_variant": true/false - If a product page is reached and the main variant is unavailable, automatically select an available one (default: false).
-        - "country": "us" / "gb" / "de" etc. - Two-letter country code for geolocation of the request to get localized results.
-        - "currency": "USD" / "GBP" / "EUR" etc. - Three-letter currency code (ISO 4217) to display prices in.
-        - "device": "desktop" / "mobile / tablet" - Device type to simulate for the request (default: desktop).
+        - "autoselect_variant": true/false - If a product page is reached, automatically select the default/most popular variant (default: false).
+        - "category_id": "123" - Restrict results to a specific Amazon category.
+        - "country": "us" / "gb" / "de" etc. - Two-letter country code for geolocation. Do NOT set it to the same country as the selected domain (e.g., country=fr with domain=fr returns 400); use zip_code instead.
+        - "currency": "USD" / "GBP" / "EUR" etc. - Three-letter currency code (ISO 4217) to display prices in (conversion may be unavailable for some domains/products).
+        - "device": "desktop" / "mobile" / "tablet" - Device type to simulate for the request (default: desktop).
         - "domain": "com" / "co.uk" / "de" etc. - The Amazon top-level domain to use for the search (default: com).
         - "language": "en-US" / "fr-FR" etc. - Language code for the request to get results in a specific language.
         - "light_request": true/false - Perform a light, faster request. Set to false to force a full JavaScript render which may yield more data (default: true).
+        - "merchant_id": "A2XXXXXXXX" - Restrict results to a specific Amazon seller.
+        - "pages": 3 - Number of consecutive result pages to fetch starting at start_page (default: 1; cost is per fetched page).
+        - "screenshot": true - Force a browser screenshot (15 credits, ignores light_request, returns a base64-encoded image).
+        - "sort_by": "most_recent" / "price_low_to_high" / "price_high_to_low" / "average_review" / "bestsellers" / "featured" - Sorting order (availability depends on category).
+        - "start_page": 2 - First result page to fetch (default: 1).
+        - "tag": "my-label" - Arbitrary label returned in response headers; does not affect scraping.
         - "zip_code": "90210" - Postal or ZIP code for geolocation to see local delivery information and availability.
+
+        Cost: 5 credits per light-request page, 15 per rendered page.
         """
     )
     args_schema: Type[BaseModel] = AmazonSearchInput
@@ -818,7 +843,7 @@ class AmazonSearchTool(BaseTool):
 
         try:
             results = json.loads(response.text)
-            result_count = len(results.get("results", []))
+            result_count = results.get("products_count", len(results.get("products", [])))
         except json.JSONDecodeError:
             result_count = "unknown (invalid JSON)"
 
@@ -864,19 +889,23 @@ class AmazonProductTool(BaseTool):
     """
     name: str = "amazon_product"
     description: str = (
-        "Retrieves detailed information for a specific Amazon product using its ASIN. "
+        "Retrieves detailed information for a specific Amazon product using its ASIN "
+        "(the 10-character identifier in an Amazon /dp/ASIN URL). "
         "All results are automatically saved to a JSON file."
         """
         SUPPORTED PARAMS:
         - "add_html": true/false - Include the full HTML of the product page in the JSON response (default: false).
-        - "autoselect_variant": true/false - If the main variant is unavailable, automatically select an available one (default: false).
-        - "country": "us" / "gb" / "de" etc. - Two-letter country code for geolocation of the request to get localized results.
-        - "currency": "USD" / "GBP" / "EUR" etc. - Three-letter currency code (ISO 4217) to display prices in.
-        - "device": "desktop" / "mobile" - Device type to simulate for the request (default: desktop).
+        - "country": "us" / "gb" / "de" etc. - Two-letter country code for geolocation. Do NOT set it to the same country as the selected domain (e.g., country=fr with domain=fr returns 400); use zip_code instead.
+        - "currency": "USD" / "GBP" / "EUR" etc. - Three-letter currency code (ISO 4217) to display prices in (conversion may be unavailable for some domains/products).
+        - "device": "desktop" / "mobile" / "tablet" - Device type to simulate for the request (default: desktop).
         - "domain": "com" / "co.uk" / "de" etc. - The Amazon top-level domain to use for the request (default: com).
-        - "language": "en-US" / "fr-FR" etc. - Language code for the request to get results in a specific language.
-        - "light_request": true/false - Perform a light, faster request. Set to false to force a full JavaScript render which may yield more data (default: true).
+        - "language": "en" / "es" / "fr" / "de" / "it" / "ja" etc. - Language code for the request to get results in a specific language.
+        - "light_request": true/false - Perform a light, faster request. Set to false to force a full JavaScript render which may yield more data, such as reviews (default: true).
+        - "screenshot": true - Force a browser screenshot (15 credits, ignores light_request, returns a base64-encoded image).
+        - "tag": "my-label" - Arbitrary label returned in response headers; does not affect scraping.
         - "zip_code": "90210" - Postal or ZIP code for geolocation to see local delivery information and availability.
+
+        Cost: 5 credits for a light request, 15 for a rendered request.
         """
     )
     args_schema: Type[BaseModel] = AmazonProductInput
@@ -949,15 +978,19 @@ class WalmartSearchTool(BaseTool):
         - "add_html": true/false - Include the full HTML of the search result page in the JSON response (default: false).
         - "delivery_zip": "72716" - ZIP code to check for local delivery options and availability.
         - "device": "desktop" / "mobile" / "tablet" - Device type to simulate for the request (default: desktop).
-        - "domain": "com" / "mx" / "ca" - The Walmart top-level domain to use for the search (e.g., com for US, ca for Canada).
-        - "fulfillment_speed": "today" / "tomorrow" / "2_days" - Filter results by delivery speed.
+        - "domain": "com" - Optional Walmart domain for localization.
+        - "fulfillment_speed": "today" / "tomorrow" / "2_days" / "anytime" - Filter results by delivery speed.
         - "fulfillment_type": "in_store" - Filter results to show only items available for in-store pickup.
-        - "light_request": true/false - Perform a light, faster request. Set to false to force a full JavaScript render (default: false).
-        - "max_price": number - Filter results by a maximum price.
-        - "min_price": number - Filter results by a minimum price.
+        - "light_request": true/false - Perform a light, faster request. Set to false to force a full JavaScript render which may yield more data (default: true).
+        - "max_price": integer - Filter results by a maximum price.
+        - "min_price": integer - Filter results by a minimum price.
+        - "screenshot": true - Force a browser screenshot (15 credits, ignores light_request, returns a base64-encoded image).
         - "sort_by": "best_match" / "price_low" / "price_high" / "best_seller" - Sorting order for results (default: best_match).
-        - "store_id": "1234" - A specific Walmart store ID to check for inventory and pricing.
+        - "start_page": 2 - Result page to fetch (default: 1; one page per request, no multi-page aggregation).
+        - "store_id": "1234" - A specific Walmart store ID to check for inventory and pricing (store IDs: https://www.scrapingbee.com/download/walmart_stores.json).
+        - "tag": "my-label" - Arbitrary label returned in response headers; does not affect scraping.
 
+        Cost: 10 credits for a light request, 15 for a regular request.
         """
     )
     args_schema: Type[BaseModel] = WalmartSearchInput
@@ -986,7 +1019,7 @@ class WalmartSearchTool(BaseTool):
 
         try:
             results = json.loads(response.text)
-            result_count = len(results.get("results", []))
+            result_count = len(results.get("products", []))
         except json.JSONDecodeError:
             result_count = "unknown (invalid JSON)"
 
@@ -1032,16 +1065,21 @@ class WalmartProductTool(BaseTool):
     """
     name: str = "walmart_product"
     description: str = (
-        "Retrieves detailed information for a specific Walmart product using its ID. "
+        "Retrieves detailed information for a specific Walmart product using its numeric ID "
+        "(the number in a Walmart /ip/ product URL, e.g., /ip/name/5491199371). "
         "All results are automatically saved to a JSON file."
         """
         SUPPORTED PARAMS:
         - "add_html": true/false - Include the full HTML of the product page in the JSON response (default: false).
-        - "delivery_zip": "72716" - ZIP code to check for local delivery options and product availability.
+        - "delivery_zip": "72716" - ZIP code to check for local delivery options and product availability. If the request errors with this param, retry with light_request=false.
         - "device": "desktop" / "mobile" / "tablet" - Device type to simulate for the request (default: desktop).
-        - "domain": "com" / "mx" / "ca" - The Walmart top-level domain to use for the request (e.g., com for US, ca for Canada).
-        - "light_request": true/false - Perform a light, faster request. Set to false to force a full JavaScript render (default: false).
-        - "store_id": "1234" - A specific Walmart store ID to check for local inventory and pricing.
+        - "domain": "com" - Optional Walmart domain for localization.
+        - "light_request": true/false - Perform a light, faster request. Set to false to force a full JavaScript render which may yield more data (default: true).
+        - "screenshot": true - Force a browser screenshot (15 credits, ignores light_request, returns a base64-encoded image).
+        - "store_id": "1234" - A specific Walmart store ID to check for local inventory and pricing (store IDs: https://www.scrapingbee.com/download/walmart_stores.json).
+        - "tag": "my-label" - Arbitrary label returned in response headers; does not affect scraping.
+
+        Cost: 10 credits for a light request, 15 for a regular request.
         """
     )
     args_schema: Type[BaseModel] = WalmartProductInput
@@ -1108,12 +1146,17 @@ class ChatGPTTool(BaseTool):
     """
     name: str = "chat_gpt"
     description: str = (
-        "Interacts with the ChatGPT API for conversational AI tasks. The response is saved to a JSON file."
+        "Interacts with the ChatGPT API for conversational AI tasks, optionally with web-enhanced search. "
+        "The response is saved to a JSON file and contains llm_model, prompt, results_markdown, "
+        "results_text, results_json, and optional full_html."
         """
         SUPPORTED PARAMS:
-        - "add_html": true/false - Include the full HTML of the page in the results if web search is enabled (default: false).
-        - "country_code": "us" / "gb" / "de" etc. - Two-letter country code for the web search request to get localized search results.
+        - "add_html": true/false - Include the full HTML (full_html) in the results (default: false).
+        - "country_code": "us" / "gb" / "de" etc. - Two-letter country code for the web search request to get localized search results (used with search=true).
         - "search": true/false - Enable web search to provide the model with up-to-date information to answer the query (default: false).
+        - "tag": "my-label" - Arbitrary label returned in response headers; does not affect the model behavior.
+
+        Cost: 15 credits per successful request. Citations are not guaranteed; when returned they appear at the end of results_markdown.
         """
     )
     args_schema: Type[BaseModel] = ChatGPTInput
@@ -1184,6 +1227,9 @@ class YouTubeMetadataTool(BaseTool):
         """
         REQUIRED PARAMS:
         - "video_id": The YouTube video identifier (the part after 'v=' in a YouTube URL, e.g., 'dQw4w9WgXcQ')
+
+        NOTES:
+        - Cost: 5 credits per request
 
         EXAMPLE USAGE:
         - To get metadata for https://www.youtube.com/watch?v=dQw4w9WgXcQ, use video_id="dQw4w9WgXcQ"
@@ -1294,6 +1340,11 @@ class YouTubeSearchTool(BaseTool):
         - "upload_date": "today" / "last_hour" / "this_week" / "this_month" / "this_year" - Filter by upload date
         - "vr180": true/false - Return only VR180 videos (default: false)
 
+        NOTES:
+        - Cost: 5 credits per successful request
+        - Results contain raw YouTube renderer data; treat the structure as YouTube-controlled and variable
+        - Page, country, and language controls are not supported for this endpoint
+
         EXAMPLE USAGE:
         - Search for recent HD cooking tutorials: {"search": "cooking tutorial", "params": {"hd": true, "upload_date": "this_month", "type": "video"}}
         - Find live gaming streams: {"search": "gaming", "params": {"live": true, "sort_by": "view_count"}}
@@ -1351,77 +1402,116 @@ class YouTubeSearchTool(BaseTool):
 
 
 # ======================================================================================
-# Tool 11: YouTube Trainability API
+# Tool 12: YouTube Subtitles API
 # ======================================================================================
 
-class YouTubeTrainabilityInput(BaseModel):
-    """Input model for the YouTube Trainability tool."""
+class YouTubeSubtitlesInput(BaseModel):
+    """Input model for the YouTube Subtitles tool."""
     video_id: str = Field(description="YouTube video identifier (e.g., 'dQw4w9WgXcQ')")
+    params: Optional[Dict[str, Any]] = Field(
+        default_factory=dict,
+        description="""Optional parameters for the YouTube Subtitles API. Must be a proper dictionary/object.
+            Examples:
+            {"language": "es"}
+            {"subtitle_origin": "uploader_provided"}
+            {"language": "fr", "subtitle_origin": "auto_generated"}"""
+    )
     results_folder: Optional[str] = Field(
         default="scraping_results",
         description="Base folder to save results"
     )
     return_content: Optional[bool] = Field(
         default=False,
-        description="Whether to return the trainability data in the response"
+        description="Whether to return the subtitles in the response"
     )
 
+    @field_validator('params', mode='before')
+    @classmethod
+    def validate_params(cls, v: Any) -> Any:
+        return str_to_dict_validator(v)
 
-class YouTubeTrainabilityTool(BaseTool):
+
+class YouTubeSubtitlesTool(BaseTool):
     """
-    Checks the trainability status of a YouTube video - whether its content can be used
-    for AI/ML training purposes. All results are automatically saved to a JSON file.
+    Retrieves the subtitles/captions for a YouTube video. Supports multiple languages
+    and can fetch either auto-generated or uploader-provided subtitles.
+    All results are automatically saved to a JSON file.
     """
-    name: str = "youtube_trainability"
+    name: str = "youtube_subtitles"
     description: str = (
-        "Checks the trainability status of a YouTube video - determines whether its content "
-        "can be used for AI/ML training purposes based on the video's settings and permissions. "
-        "This is useful for data collection and compliance checking before using video content "
-        "for machine learning applications. "
+        "Retrieves the subtitles/captions/transcript for a YouTube video. Supports multiple languages "
+        "and can fetch either auto-generated or uploader-provided subtitles. "
+        "Useful for content analysis, accessibility, translation, and search indexing. "
         "All results are automatically saved to a JSON file. "
-        "Use return_content=True to get the trainability data in the response for analysis. "
+        "Use return_content=True to get the subtitles in the response for analysis. "
         """
-        REQUIRED PARAMS:
-        - "video_id": The YouTube video identifier (the part after 'v=' in a YouTube URL, e.g., 'dQw4w9WgXcQ')
+        SUPPORTED PARAMS:
+        - "language": ISO language code for the subtitles
+            Examples: "en" (English), "es" (Spanish), "fr" (French), "de" (German),
+                      "ja" (Japanese), "ko" (Korean), "zh" (Chinese), "pt" (Portuguese)
+        - "subtitle_origin": "auto_generated" / "uploader_provided" - Choose the source of the subtitles
+            - "auto_generated": YouTube's automatic speech recognition captions
+            - "uploader_provided": Captions uploaded by the video creator (usually more accurate)
+
+        NOTES:
+        - Cost: 5 credits per request
+        - A requested language with no matching subtitles returns a 404 error
+        - The response separates subtitles.auto_generated and subtitles.uploader_provided, keyed by
+          language, with timestamped text runs (start_ms, d_duration_ms, snippet.runs[].text)
 
         EXAMPLE USAGE:
-        - To check trainability for https://www.youtube.com/watch?v=dQw4w9WgXcQ, use video_id="dQw4w9WgXcQ"
+        - Get subtitles: {"video_id": "dQw4w9WgXcQ"}
+        - Get Spanish uploader-provided subtitles: {"video_id": "dQw4w9WgXcQ", "params": {"language": "es", "subtitle_origin": "uploader_provided"}}
         """
     )
-    args_schema: Type[BaseModel] = YouTubeTrainabilityInput
+    args_schema: Type[BaseModel] = YouTubeSubtitlesInput
     api_key: str
 
-    def _run(self, video_id: str, results_folder: str = "scraping_results",
-             return_content: bool = False) -> str:
-        api_url = "https://app.scrapingbee.com/api/v1/youtube/trainability"
-        request_params = {'api_key': self.api_key, 'video_id': video_id}
+    def _run(self, video_id: str, params: Optional[Dict[str, Any]] = None,
+             results_folder: str = "scraping_results", return_content: bool = False) -> str:
+        params = params or {}
+        # Backward compatibility with the old transcript parameter name
+        if "transcript_origin" in params and "subtitle_origin" not in params:
+            params["subtitle_origin"] = params.pop("transcript_origin")
+
+        api_url = "https://app.scrapingbee.com/api/v1/youtube/subtitles"
+        request_params = {'api_key': self.api_key, 'video_id': video_id, **params}
 
         try:
             response = requests.get(api_url, params=request_params,
                                     headers={'User-Agent': 'LangChain'}, timeout=120)
             response.raise_for_status()
         except requests.exceptions.RequestException as e:
-            return f"Error during YouTube Trainability API call: {getattr(e.response, 'text', str(e))}"
+            return f"Error during YouTube Subtitles API call: {getattr(e.response, 'text', str(e))}"
 
         folder_path = create_results_folder(results_folder)
-        filename = f"youtube_trainability_{sanitize_filename(video_id)}.json"
+        language = params.get("language", "default")
+        origin = params.get("subtitle_origin", "any")
+        filename = f"youtube_subtitles_{sanitize_filename(video_id)}_{language}_{origin}.json"
         file_path = os.path.join(folder_path, filename)
 
         with open(file_path, 'w', encoding='utf-8') as f:
             f.write(response.text)
 
-        save_scraping_metadata(folder_path, f"youtube_trainability:{video_id}",
-                               {"video_id": video_id}, "trainability_data", filename=filename)
+        save_scraping_metadata(folder_path, f"youtube_subtitles:{video_id}",
+                               {"video_id": video_id, **params}, "subtitles", filename=filename)
 
-        # Try to extract trainability status for summary
+        # Try to get subtitle info for summary
         try:
             data = json.loads(response.text)
-            trainable = data.get("trainable", data.get("is_trainable", "Unknown"))
-            summary = f"Video ID: {video_id}\nTrainable: {trainable}"
+            if isinstance(data, dict) and isinstance(data.get("subtitles"), dict):
+                subtitles = data["subtitles"]
+                auto_langs = sorted((subtitles.get("auto_generated") or {}).keys())
+                uploader_langs = sorted((subtitles.get("uploader_provided") or {}).keys())
+                summary = (f"Video ID: {video_id}\n"
+                           f"Auto-generated languages: {', '.join(auto_langs) if auto_langs else 'none'}\n"
+                           f"Uploader-provided languages: {', '.join(uploader_langs) if uploader_langs else 'none'}")
+            else:
+                summary = f"Video ID: {video_id}"
         except json.JSONDecodeError:
             summary = f"Video ID: {video_id}"
 
-        base_response = (f"YouTube trainability check complete:\n"
+        base_response = (f"YouTube subtitles retrieved:\n"
                          f"{summary}\n"
                          f"Saved to: {file_path}")
 
@@ -1431,20 +1521,24 @@ class YouTubeTrainabilityTool(BaseTool):
             return base_response
 
 
+# Backward-compatible aliases for the pre-1.0.0 transcript naming
+YouTubeTranscriptInput = YouTubeSubtitlesInput
+YouTubeTranscriptTool = YouTubeSubtitlesTool
+
+
 # ======================================================================================
-# Tool 12: YouTube Transcript API
+# Tool 13: Fast Search API
 # ======================================================================================
 
-class YouTubeTranscriptInput(BaseModel):
-    """Input model for the YouTube Transcript tool."""
-    video_id: str = Field(description="YouTube video identifier (e.g., 'dQw4w9WgXcQ')")
+class FastSearchInput(BaseModel):
+    """Input model for the Fast Search tool."""
+    search: str = Field(description="The search query text to send to Google")
     params: Optional[Dict[str, Any]] = Field(
         default_factory=dict,
-        description="""Optional parameters for the YouTube Transcript API. Must be a proper dictionary/object.
+        description="""Optional parameters dictionary for the Fast Search API. Must be a proper dictionary/object.
             Examples:
-            {"language": "es"}
-            {"transcript_origin": "uploader_provided"}
-            {"language": "fr", "transcript_origin": "auto_generated"}"""
+            {"country_code": "gb", "language": "en"}
+            {"page": 2}"""
     )
     results_folder: Optional[str] = Field(
         default="scraping_results",
@@ -1452,7 +1546,7 @@ class YouTubeTranscriptInput(BaseModel):
     )
     return_content: Optional[bool] = Field(
         default=False,
-        description="Whether to return the transcript in the response"
+        description="Whether to return the search results in the response. Must be set to True if the agent needs to read the contents."
     )
 
     @field_validator('params', mode='before')
@@ -1461,83 +1555,242 @@ class YouTubeTranscriptInput(BaseModel):
         return str_to_dict_validator(v)
 
 
-class YouTubeTranscriptTool(BaseTool):
+class FastSearchTool(BaseTool):
     """
-    Retrieves the transcript/captions for a YouTube video. Supports multiple languages
-    and can fetch either auto-generated or uploader-provided transcripts.
+    Performs a lightweight, low-latency Google search optimized for sub-second responses.
     All results are automatically saved to a JSON file.
     """
-    name: str = "youtube_transcript"
+    name: str = "fast_search"
     description: str = (
-        "Retrieves the transcript/captions for a YouTube video. Supports multiple languages "
-        "and can fetch either auto-generated or uploader-provided transcripts. "
-        "Useful for content analysis, accessibility, translation, and search indexing. "
+        "Performs a lightweight, low-latency Google search optimized for sub-second responses. "
+        "Returns organic results (rank, title, link, description, extensions) and top_stories. "
+        "Cheaper and faster than the full Google Search API, but without detailed SERP types, "
+        "multi-page aggregation, or AI Overviews - use google_search when those are needed. "
         "All results are automatically saved to a JSON file. "
-        "Use return_content=True to get the transcript in the response for analysis. "
+        "Use return_content=True to get the results back for analysis."
         """
         SUPPORTED PARAMS:
-        - "language": ISO language code for the transcript (default: "en")
-            Examples: "en" (English), "es" (Spanish), "fr" (French), "de" (German),
-                      "ja" (Japanese), "ko" (Korean), "zh" (Chinese), "pt" (Portuguese)
-        - "transcript_origin": "auto_generated" / "uploader_provided" - Choose the source of the transcript (default: "auto_generated")
-            - "auto_generated": YouTube's automatic speech recognition captions
-            - "uploader_provided": Captions uploaded by the video creator (usually more accurate)
+        - "country_code": "us" / "gb" / "de" etc. - ISO 3166-1 alpha-2 code to localize results (default: "us")
+        - "language": "en" / "es" / "fr" etc. - Language of the results (default: "en")
+        - "page": 2 - Page number for pagination (default: 1)
+        - "tag": "my-label" - Arbitrary label returned in response headers; does not affect scraping
 
-        EXAMPLE USAGE:
-        - Get English auto-generated transcript: {"video_id": "dQw4w9WgXcQ"}
-        - Get Spanish uploader-provided transcript: {"video_id": "dQw4w9WgXcQ", "params": {"language": "es", "transcript_origin": "uploader_provided"}}
+        Cost: 10 credits per successful request.
         """
     )
-    args_schema: Type[BaseModel] = YouTubeTranscriptInput
+    args_schema: Type[BaseModel] = FastSearchInput
     api_key: str
 
-    def _run(self, video_id: str, params: Optional[Dict[str, Any]] = None,
+    def _run(self, search: str, params: Optional[Dict[str, Any]] = None,
              results_folder: str = "scraping_results", return_content: bool = False) -> str:
         params = params or {}
-        api_url = "https://app.scrapingbee.com/api/v1/youtube/transcript"
-        request_params = {'api_key': self.api_key, 'video_id': video_id, **params}
+        api_url = "https://app.scrapingbee.com/api/v1/fast_search"
+        request_params = {'api_key': self.api_key, 'search': search, **params}
 
         try:
-            response = requests.get(api_url, params=request_params,
-                                    headers={'User-Agent': 'LangChain'}, timeout=120)
+            response = requests.get(api_url, params=request_params, headers={'User-Agent': 'LangChain'}, timeout=120)
             response.raise_for_status()
         except requests.exceptions.RequestException as e:
-            return f"Error during YouTube Transcript API call: {getattr(e.response, 'text', str(e))}"
+            return f"Error during Fast Search API call: {getattr(e.response, 'text', str(e))}"
 
         folder_path = create_results_folder(results_folder)
-        language = params.get("language", "en")
-        origin = params.get("transcript_origin", "auto")
-        filename = f"youtube_transcript_{sanitize_filename(video_id)}_{language}_{origin}.json"
+        filename = f"fast_search_{sanitize_filename(search)}.json"
         file_path = os.path.join(folder_path, filename)
 
         with open(file_path, 'w', encoding='utf-8') as f:
             f.write(response.text)
 
-        save_scraping_metadata(folder_path, f"youtube_transcript:{video_id}",
-                               {"video_id": video_id, **params}, "transcript", filename=filename)
+        save_scraping_metadata(folder_path, f"fast_search:{search}", params, "search_results", filename=filename)
 
-        # Try to get transcript info for summary
         try:
-            data = json.loads(response.text)
-            if isinstance(data, list):
-                segment_count = len(data)
-                # Calculate total duration if available
-                if segment_count > 0 and "start" in data[-1]:
-                    duration = data[-1].get("start", 0) + data[-1].get("duration", 0)
-                    summary = f"Video ID: {video_id}\nLanguage: {language}\nSegments: {segment_count}\nDuration: ~{int(duration)}s"
-                else:
-                    summary = f"Video ID: {video_id}\nLanguage: {language}\nSegments: {segment_count}"
-            elif isinstance(data, dict):
-                transcript_text = data.get("transcript", data.get("text", ""))
-                char_count = len(transcript_text) if transcript_text else 0
-                summary = f"Video ID: {video_id}\nLanguage: {language}\nCharacters: {char_count}"
-            else:
-                summary = f"Video ID: {video_id}\nLanguage: {language}"
+            results = json.loads(response.text)
+            result_count = len(results.get("organic", []))
         except json.JSONDecodeError:
-            summary = f"Video ID: {video_id}\nLanguage: {language}"
+            result_count = "unknown (invalid JSON)"
 
-        base_response = (f"YouTube transcript retrieved:\n"
-                         f"{summary}\n"
+        base_response = (f"Fast search complete:\n"
+                         f"Query: \"{search}\"\n"
+                         f"Organic results: {result_count}\n"
+                         f"Saved to: {file_path}")
+
+        if return_content:
+            return f"{base_response}\n\nCONTENT:\n{response.text}"
+        else:
+            return base_response
+
+
+# ======================================================================================
+# Tool 14: Amazon Pricing API
+# ======================================================================================
+
+class AmazonPricingInput(BaseModel):
+    """Input model for the Amazon Pricing tool."""
+    asin: str = Field(description="The 10-character ASIN (Amazon Standard Identification Number) of the product")
+    params: Optional[Dict[str, Any]] = Field(
+        default_factory=dict,
+        description="""Optional parameters for the Amazon Pricing API. Must be a proper dictionary/object.
+            Examples:
+            {"domain": "co.uk", "currency": "GBP"}
+            {"zip_code": "90210", "light_request": false}"""
+    )
+    results_folder: Optional[str] = Field(
+        default="scraping_results",
+        description="Base folder to save results"
+    )
+    return_content: Optional[bool] = Field(
+        default=False,
+        description="Whether to return the pricing data in the response"
+    )
+
+    @field_validator('params', mode='before')
+    @classmethod
+    def validate_params(cls, v: Any) -> Any:
+        return str_to_dict_validator(v)
+
+
+class AmazonPricingTool(BaseTool):
+    """
+    Retrieves current pricing and offers for a specific Amazon product using its ASIN.
+    All results are automatically saved to a JSON file.
+    """
+    name: str = "amazon_pricing"
+    description: str = (
+        "Retrieves current pricing and offers for a specific Amazon product using its ASIN "
+        "(the 10-character identifier in an Amazon /dp/ASIN URL). "
+        "Each offer can include condition, price/currency, shipping price, seller info, "
+        "delivery text, and delivery options. All results are automatically saved to a JSON file. "
+        "Use return_content=True to get the results back for analysis."
+        """
+        SUPPORTED PARAMS:
+        - "add_html": true/false - Include the full HTML of the page in the JSON response (default: false).
+        - "country": "us" / "gb" / "de" etc. - Two-letter country code for geolocation. Do NOT set it to the same country as the selected domain (e.g., country=fr with domain=fr returns 400); use zip_code instead.
+        - "currency": "USD" / "GBP" / "EUR" etc. - Three-letter currency code (ISO 4217) to display prices in (conversion may be unavailable for some domains/products).
+        - "device": "desktop" - Only desktop is documented for this endpoint.
+        - "domain": "com" / "co.uk" / "de" etc. - The Amazon top-level domain to use for the request (default: com).
+        - "language": "en" / "es" / "fr" etc. - Language code for the request.
+        - "light_request": true/false - Perform a light, faster request. Set to false to force a full JavaScript render which may yield more data (default: true).
+        - "tag": "my-label" - Arbitrary label returned in response headers; does not affect scraping.
+        - "zip_code": "90210" - Postal or ZIP code for geolocation to see local availability, shipping, and regional prices.
+
+        Cost: 5 credits for a light request, 15 for a rendered request.
+        """
+    )
+    args_schema: Type[BaseModel] = AmazonPricingInput
+    api_key: str
+
+    def _run(self, asin: str, params: Optional[Dict[str, Any]] = None,
+             results_folder: str = "scraping_results", return_content: bool = False) -> str:
+        params = params or {}
+        api_url = "https://app.scrapingbee.com/api/v1/amazon/pricing"
+        request_params = {'api_key': self.api_key, 'asin': asin, **params}
+
+        try:
+            response = requests.get(api_url, params=request_params, headers={'User-Agent': 'LangChain'}, timeout=120)
+            response.raise_for_status()
+        except requests.exceptions.RequestException as e:
+            return f"Error during Amazon Pricing API call: {getattr(e.response, 'text', str(e))}"
+
+        folder_path = create_results_folder(results_folder)
+        filename = f"amazon_pricing_{sanitize_filename(asin)}.json"
+        file_path = os.path.join(folder_path, filename)
+
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(response.text)
+
+        save_scraping_metadata(folder_path, f"amazon_pricing:{asin}", params, "pricing_data", filename=filename)
+
+        try:
+            results = json.loads(response.text)
+            offer_count = len(results.get("pricing", []))
+        except json.JSONDecodeError:
+            offer_count = "unknown (invalid JSON)"
+
+        base_response = (f"Amazon pricing data retrieved:\n"
+                         f"ASIN: \"{asin}\"\n"
+                         f"Offers: {offer_count}\n"
+                         f"Saved to: {file_path}")
+
+        if return_content:
+            return f"{base_response}\n\nCONTENT:\n{response.text}"
+        else:
+            return base_response
+
+
+# ======================================================================================
+# Tool 15: Gemini API
+# ======================================================================================
+
+class GeminiInput(BaseModel):
+    """Input model for the Gemini tool."""
+    prompt: str = Field(description="The prompt you want to send to Gemini")
+    params: Optional[Dict[str, Any]] = Field(
+        default_factory=dict,
+        description="Optional parameters for the Gemini API"
+    )
+    results_folder: Optional[str] = Field(
+        default="scraping_results",
+        description="Base folder to save results"
+    )
+    return_content: Optional[bool] = Field(
+        default=False,
+        description="Whether to return the API response in the output"
+    )
+
+    @field_validator('params', mode='before')
+    @classmethod
+    def validate_params(cls, v: Any) -> Any:
+        return str_to_dict_validator(v)
+
+
+class GeminiTool(BaseTool):
+    """
+    Interacts with the Gemini API for conversational AI tasks. The response is saved to a JSON file.
+    """
+    name: str = "gemini"
+    description: str = (
+        "Interacts with the Gemini API for conversational AI tasks. "
+        "The response is saved to a JSON file and contains prompt, results_markdown, "
+        "results_text, citations, and optional full_html. "
+        "Citations are not guaranteed and are more likely for web-grounded answers; when present, "
+        "each citation has title, url, description, and text."
+        """
+        SUPPORTED PARAMS:
+        - "add_html": true/false - Include the full HTML (full_html) in the results (default: false).
+        - "country_code": "us" / "gb" / "de" etc. - Two-letter country code that sets the request geolocation.
+        - "tag": "my-label" - Arbitrary label returned in response headers; does not affect the model behavior.
+
+        Cost: 15 credits per successful request. Unlike chat_gpt, there is no "search" parameter.
+        """
+    )
+    args_schema: Type[BaseModel] = GeminiInput
+    api_key: str
+
+    def _run(self, prompt: str, params: Optional[Dict[str, Any]] = None,
+             results_folder: str = "scraping_results", return_content: bool = False) -> str:
+        params = params or {}
+        api_url = "https://app.scrapingbee.com/api/v1/gemini"
+        headers = {'User-Agent': 'LangChain', 'Content-Type': 'application/json'}
+        request_params = {'api_key': self.api_key, 'prompt': prompt, **params}
+
+        try:
+            response = requests.get(api_url, headers=headers, params=request_params, timeout=180)
+            response.raise_for_status()
+        except requests.exceptions.RequestException as e:
+            return f"Error during Gemini API call: {getattr(e.response, 'text', str(e))}"
+
+        folder_path = create_results_folder(results_folder)
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"gemini_response_{timestamp}.json"
+        file_path = os.path.join(folder_path, filename)
+
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(response.text)
+
+        # For metadata, we omit the potentially very large message payload for cleaner logs
+        logged_params = {**params, "prompt": "omitted for brevity"}
+        save_scraping_metadata(folder_path, "gemini_api", logged_params, "api_response", filename=filename)
+
+        base_response = (f"Gemini API call successful:\n"
                          f"Saved to: {file_path}")
 
         if return_content:

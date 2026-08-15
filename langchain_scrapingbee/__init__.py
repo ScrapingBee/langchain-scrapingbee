@@ -3,15 +3,18 @@ from importlib import metadata
 from langchain_scrapingbee.tools import (
     ScrapeUrlTool,
     GoogleSearchTool,
+    FastSearchTool,
     CheckUsageTool,
     AmazonSearchTool,
     AmazonProductTool,
+    AmazonPricingTool,
     WalmartSearchTool,
     WalmartProductTool,
     ChatGPTTool,
+    GeminiTool,
     YouTubeMetadataTool,
     YouTubeSearchTool,
-    YouTubeTrainabilityTool,
+    YouTubeSubtitlesTool,
     YouTubeTranscriptTool,
 )
 
@@ -26,14 +29,18 @@ del metadata  # optional, avoids polluting the results of dir(__package__)
 __all__ = [
     "ScrapeUrlTool",
     "GoogleSearchTool",
+    "FastSearchTool",
     "CheckUsageTool",
     "AmazonSearchTool",
     "AmazonProductTool",
+    "AmazonPricingTool",
     "WalmartSearchTool",
     "WalmartProductTool",
     "ChatGPTTool",
+    "GeminiTool",
     "YouTubeMetadataTool",
     "YouTubeSearchTool",
-    "YouTubeTrainabilityTool",
+    "YouTubeSubtitlesTool",
+    # Deprecated alias kept for backward compatibility
     "YouTubeTranscriptTool",
 ]
