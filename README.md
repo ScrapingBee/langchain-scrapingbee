@@ -20,18 +20,20 @@ And you should configure credentials by setting the following environment variab
 
 ScrapingBee Integration provides you access to the following tools:
 
-* **ScrapeUrlTool** - Scrape the contents of any public website. You can also use this to extract data, capture screenshots, interact with the page before scraping and capture the internal requests sent by the webpage.
-* **GoogleSearchTool** - Search Google to obtain the following types of information regular search (classic), news, maps, and images.
+* **ScrapeUrlTool** - Scrape the contents of any public website. You can also use this to extract data, capture screenshots, interact with the page before scraping and capture the internal requests sent by the webpage. Supports automatic proxy/rendering escalation with `mode="auto"`.
+* **GoogleSearchTool** - Search Google to obtain the following types of information: regular search (classic), news, maps, lens, shopping, images, ai_mode, and ads.
+* **FastSearchTool** - Perform a lightweight, low-latency Google search optimized for sub-second responses.
 * **CheckUsageTool** — Monitor your ScrapingBee credit or concurrency usage using this tool.
-* **AmazonSearchTool** - Perform a product search on Amazon with options for localization, pagination, and advanced filtering.
+* **AmazonSearchTool** - Perform a product search on Amazon with options for localization, pagination, sorting, and advanced filtering.
 * **AmazonProductTool** - Retrieve detailed information, including reviews, for a specific product on Amazon using its ASIN.
+* **AmazonPricingTool** - Retrieve current pricing and offers for a specific Amazon product using its ASIN.
 * **WalmartSearchTool** - Search for products on Walmart with parameters for sorting and price filtering.
 * **WalmartProductTool** - Get specific details and reviews for a Walmart product by its ID.
 * **ChatGPTTool** - Send your prompt to ChatGPT with an option to enhance its responses with live web search results.
+* **GeminiTool** - Send your prompt to Gemini and receive citation objects when available.
 * **YouTubeMetadataTool** - Retrieve comprehensive metadata for a YouTube video including title, description, view count, likes, channel info, publish date, duration, thumbnails, and tags.
 * **YouTubeSearchTool** - Search YouTube with extensive filtering options for video quality (HD, 4K, HDR), duration, upload date, content type (video, channel, playlist), live streams, and more.
-* **YouTubeTrainabilityTool** - Check whether a YouTube video's content can be used for AI/ML training purposes based on the video's settings and permissions.
-* **YouTubeTranscriptTool** - Retrieve transcripts/captions for a YouTube video with support for multiple languages and choice between auto-generated or uploader-provided transcripts.
+* **YouTubeSubtitlesTool** - Retrieve subtitles/captions for a YouTube video with support for multiple languages and choice between auto-generated or uploader-provided subtitles. (Replaces `YouTubeTranscriptTool`, which remains available as a deprecated alias.)
 
 ## Example
 
@@ -41,16 +43,18 @@ import getpass
 from langchain_scrapingbee import (
     ScrapeUrlTool, 
     GoogleSearchTool, 
+    FastSearchTool,
     CheckUsageTool,
     AmazonSearchTool,
     AmazonProductTool,
+    AmazonPricingTool,
     WalmartSearchTool,
     WalmartProductTool,
     ChatGPTTool,
+    GeminiTool,
     YouTubeMetadataTool,
     YouTubeSearchTool,
-    YouTubeTrainabilityTool,
-    YouTubeTranscriptTool,
+    YouTubeSubtitlesTool,
 )
 
 api_key = os.environ.get("SCRAPINGBEE_API_KEY")
@@ -62,16 +66,18 @@ api_key = os.environ.get("SCRAPINGBEE_API_KEY")
 
 scrape_tool = ScrapeUrlTool(api_key=api_key)
 google_search_tool = GoogleSearchTool(api_key=api_key)
+fast_search_tool = FastSearchTool(api_key=api_key)
 usage_tool = CheckUsageTool(api_key=api_key)
 amazon_search_tool = AmazonSearchTool(api_key=api_key)
 amazon_product_tool = AmazonProductTool(api_key=api_key)
+amazon_pricing_tool = AmazonPricingTool(api_key=api_key)
 walmart_search_tool = WalmartSearchTool(api_key=api_key)
 walmart_product_tool = WalmartProductTool(api_key=api_key)
 chatgpt_tool = ChatGPTTool(api_key=api_key)
+gemini_tool = GeminiTool(api_key=api_key)
 youtube_metadata_tool = YouTubeMetadataTool(api_key=api_key)
 youtube_search_tool = YouTubeSearchTool(api_key=api_key)
-youtube_trainability_tool = YouTubeTrainabilityTool(api_key=api_key)
-youtube_transcript_tool = YouTubeTranscriptTool(api_key=api_key)
+youtube_subtitles_tool = YouTubeSubtitlesTool(api_key=api_key)
 
 
 # --- Test Case 1: Scrape a standard HTML page ---
@@ -151,20 +157,34 @@ youtube_search_result = youtube_search_tool.invoke({
 })
 print(youtube_search_result)
 
-# --- Test Case 12: YouTube Trainability ---
-print("\n--- 12. Testing YouTubeTrainabilityTool ---")
-youtube_trainability_result = youtube_trainability_tool.invoke({
-    'video_id': 'dQw4w9WgXcQ'
-})
-print(youtube_trainability_result)
-
-# --- Test Case 13: YouTube Transcript ---
-print("\n--- 13. Testing YouTubeTranscriptTool ---")
-youtube_transcript_result = youtube_transcript_tool.invoke({
+# --- Test Case 12: YouTube Subtitles ---
+print("\n--- 12. Testing YouTubeSubtitlesTool ---")
+youtube_subtitles_result = youtube_subtitles_tool.invoke({
     'video_id': 'dQw4w9WgXcQ',
     'params': {'language': 'en'}
 })
-print(youtube_transcript_result)
+print(youtube_subtitles_result)
+
+# --- Test Case 13: Fast Search ---
+print("\n--- 13. Testing FastSearchTool ---")
+fast_search_result = fast_search_tool.invoke({
+    'search': 'What is LangChain?'
+})
+print(fast_search_result)
+
+# --- Test Case 14: Amazon Pricing ---
+print("\n--- 14. Testing AmazonPricingTool ---")
+amazon_pricing_result = amazon_pricing_tool.invoke({
+    'asin': 'B0DPDRNSXV'
+})
+print(amazon_pricing_result)
+
+# --- Test Case 15: Gemini ---
+print("\n--- 15. Testing GeminiTool ---")
+gemini_result = gemini_tool.invoke({
+    'prompt': 'Explain the benefits of renewable energy in 100 words'
+})
+print(gemini_result)
 ```
 
 ## Example Using Agent
@@ -174,16 +194,18 @@ import os
 from langchain_scrapingbee import (
     ScrapeUrlTool,
     GoogleSearchTool,
+    FastSearchTool,
     CheckUsageTool,
     AmazonSearchTool,
     AmazonProductTool,
+    AmazonPricingTool,
     WalmartSearchTool,
     WalmartProductTool,
     ChatGPTTool,
+    GeminiTool,
     YouTubeMetadataTool,
     YouTubeSearchTool,
-    YouTubeTrainabilityTool,
-    YouTubeTranscriptTool,
+    YouTubeSubtitlesTool,
 )
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.prebuilt import create_react_agent
@@ -197,16 +219,18 @@ scrapingbee_api_key = os.environ.get("SCRAPINGBEE_API_KEY")
 tools = [
     ScrapeUrlTool(api_key=scrapingbee_api_key),
     GoogleSearchTool(api_key=scrapingbee_api_key),
+    FastSearchTool(api_key=scrapingbee_api_key),
     CheckUsageTool(api_key=scrapingbee_api_key),
     AmazonSearchTool(api_key=scrapingbee_api_key),
     AmazonProductTool(api_key=scrapingbee_api_key),
+    AmazonPricingTool(api_key=scrapingbee_api_key),
     WalmartSearchTool(api_key=scrapingbee_api_key),
     WalmartProductTool(api_key=scrapingbee_api_key),
     ChatGPTTool(api_key=scrapingbee_api_key),
+    GeminiTool(api_key=scrapingbee_api_key),
     YouTubeMetadataTool(api_key=scrapingbee_api_key),
     YouTubeSearchTool(api_key=scrapingbee_api_key),
-    YouTubeTrainabilityTool(api_key=scrapingbee_api_key),
-    YouTubeTranscriptTool(api_key=scrapingbee_api_key),
+    YouTubeSubtitlesTool(api_key=scrapingbee_api_key),
 ]
 
 agent = create_react_agent(llm, tools)
@@ -218,13 +242,13 @@ If I have enough API Credits, perform the following tasks:
 
 2. Get metadata of the video with the shortest duration.
 
-3. Get the transcript of the video.
+3. Get the subtitles of the video.
 
-4. Check if the video is trainable for AI/ML purposes.
+4. Search for "harry potter" book on Amazon.
 
-5. Search for "harry potter" book on Amazon.
+5. Get the product details for the top "harry potter" book result from Amazon (use the ASIN).
 
-6. Get the product details for the top Python book result from Amazon (use the ASIN).
+6. Get the current pricing and offers for the same ASIN.
 
 7. Search for "harry potter" book on Walmart.
 
@@ -246,9 +270,11 @@ for step in agent.stream(
 ## Documentation
 * [HTML API](https://www.scrapingbee.com/documentation/)
 * [Google Search API](https://www.scrapingbee.com/documentation/google/)
+* [Fast Search API](https://www.scrapingbee.com/documentation/fast-search/)
 * [Data Extraction](https://www.scrapingbee.com/documentation/data-extraction/)
 * [JavaScript Scenario](https://www.scrapingbee.com/documentation/js-scenario/)
-* [Amazon Search/Product API](https://www.scrapingbee.com/documentation/amazon/)
+* [Amazon Search/Product/Pricing API](https://www.scrapingbee.com/documentation/amazon/)
 * [Walmart Search/Product API](https://www.scrapingbee.com/documentation/walmart/)
 * [ChatGPT API](https://www.scrapingbee.com/documentation/chatgpt/)
+* [Gemini API](https://www.scrapingbee.com/documentation/gemini/)
 * [YouTube APIs](https://www.scrapingbee.com/documentation/youtube/)
