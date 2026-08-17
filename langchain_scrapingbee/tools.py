@@ -79,8 +79,8 @@ scraping_prompt = (
                 - Stealth proxy limitations: No infinite_scroll, timeout, custom headers/cookies, or evaluate_results in a JSON response
             ]
         - "json_response": true - Wrap response in JSON format with metadata. This can also be used to find internal xhr requests
-        - "max_cost": 25 - Only valid with mode=auto; caps the most expensive tier auto mode is allowed to try (e.g., 25 prevents escalation to stealth)
-        - "mode": "auto" - Automatic escalation from cheapest to most expensive configuration (rotating 1/5 credits -> premium 10/25 -> stealth 75) until one succeeds; only the successful tier is billed, a total failure costs 0. GET-only. Do NOT combine with render_js, premium_proxy, stealth_proxy, or transparent_status_code (returns 400). It never adds js_scenario, waits, headers, or cookies - pass those yourself
+        - "max_cost": 25 - Integer >= 1; only valid with mode=auto. Caps the most expensive tier auto mode is allowed to try (e.g., 25 prevents escalation to stealth)
+        - "mode": "auto" - Automatic escalation from cheapest to most expensive configuration (rotating 1/5 credits -> premium 10/25 -> stealth 75) until one succeeds; only the successful tier is billed, a total failure costs 0. The winning tier's cost is reported in the Spb-auto-cost response header. GET-only. Do NOT combine with render_js, premium_proxy, stealth_proxy, or transparent_status_code (returns 400). It never adds js_scenario, waits, headers, or cookies - pass those yourself
         - "own_proxy": "protocol://user:pass@host:port" - Use your own proxy (port defaults to 1080 if omitted)
         - "premium_proxy": true - Use premium/residential proxy pool (10 credits without JS rendering, 25 with)
         - "render_js": true/false - Enable JS rendering (default: true)
@@ -234,7 +234,8 @@ class ScrapeUrlInput(BaseModel):
         Examples:
         {"screenshot_full_page": true, "wait": 2000}
         {"extract_rules": '{"title": "h1", "price": ".price"}'}
-        {"country_code": "gb", "device": "mobile"}"""
+        {"country_code": "gb", "device": "mobile"}
+        {"mode": "auto", "max_cost": 25}"""
     )
     headers: Optional[Dict[str, str]] = Field(  # ADD THIS
         default_factory=dict,
