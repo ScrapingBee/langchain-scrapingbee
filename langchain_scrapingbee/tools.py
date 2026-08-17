@@ -467,6 +467,9 @@ class GoogleSearchTool(BaseTool):
         - "sort_by": "relevance"/"reviews"/"price_asc"/"price_desc" - Sorting (shopping search only)
         - "tag": "my-label" - Arbitrary label returned in response headers; does not affect scraping
 
+        IGNORED PARAMS (accepted but have no effect - do not use):
+        - "nb_results": silently ignored by the API; use "page"/"pages" for pagination instead
+
         NOTES:
         - Cost: 10 credits per light request, 15 with light_request=false
         - search_type=lens requires an image URL in the search input; search_type=ai_mode accepts at most 400 input characters
@@ -895,6 +898,7 @@ class AmazonProductTool(BaseTool):
         """
         SUPPORTED PARAMS:
         - "add_html": true/false - Include the full HTML of the product page in the JSON response (default: false).
+        - "autoselect_variant": true/false - If the main variant is unavailable, automatically select an available one (default: false). Not listed in the current API docs for this endpoint, but accepted by the API.
         - "country": "us" / "gb" / "de" etc. - Two-letter country code for geolocation. Do NOT set it to the same country as the selected domain (e.g., country=fr with domain=fr returns 400); use zip_code instead.
         - "currency": "USD" / "GBP" / "EUR" etc. - Three-letter currency code (ISO 4217) to display prices in (conversion may be unavailable for some domains/products).
         - "device": "desktop" / "mobile" / "tablet" - Device type to simulate for the request (default: desktop).
