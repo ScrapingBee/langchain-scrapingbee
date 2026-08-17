@@ -316,9 +316,10 @@ class ScrapeUrlTool(BaseTool):
             processed_params['forward_headers'] = True
 
         final_headers['User-Agent'] = 'LangChain'
+        final_headers['Authorization'] = f'Bearer {self.api_key}'
 
         api_url = "https://app.scrapingbee.com/api/v1/"
-        request_params = {'api_key': self.api_key, 'url': url, **processed_params}
+        request_params = {'url': url, **processed_params}
 
         try:
             response = requests.get(api_url, params=request_params, headers=final_headers, timeout=180)
@@ -580,10 +581,10 @@ class GoogleSearchTool(BaseTool):
              results_folder: str = "scraping_results", return_content: bool = False) -> str:
         params = params or {}
         api_url = "https://app.scrapingbee.com/api/v1/store/google"
-        request_params = {'api_key': self.api_key, 'search': search, **params}
+        request_params = {'search': search, **params}
 
         try:
-            response = requests.get(api_url, params=request_params, headers={'User-Agent': 'LangChain'}, timeout=120)
+            response = requests.get(api_url, params=request_params, headers={'User-Agent': 'LangChain', 'Authorization': f'Bearer {self.api_key}'}, timeout=120)
             response.raise_for_status()
         except requests.exceptions.RequestException as e:
             return f"Error during Google Search API call: {getattr(e.response, 'text', str(e))}"
@@ -745,10 +746,9 @@ class CheckUsageTool(BaseTool):
 
     def _run(self) -> str:
         api_url = "https://app.scrapingbee.com/api/v1/usage"
-        params = {'api_key': self.api_key}
 
         try:
-            response = requests.get(api_url, params=params, timeout=30)
+            response = requests.get(api_url, headers={'Authorization': f'Bearer {self.api_key}'}, timeout=30)
             response.raise_for_status()
             return response.text
         except requests.exceptions.RequestException as e:
@@ -824,10 +824,10 @@ class AmazonSearchTool(BaseTool):
              results_folder: str = "scraping_results", return_content: bool = False) -> str:
         params = params or {}
         api_url = "https://app.scrapingbee.com/api/v1/amazon/search"
-        request_params = {'api_key': self.api_key, 'query': query, **params}
+        request_params = {'query': query, **params}
 
         try:
-            response = requests.get(api_url, params=request_params, headers={'User-Agent': 'LangChain'}, timeout=120)
+            response = requests.get(api_url, params=request_params, headers={'User-Agent': 'LangChain', 'Authorization': f'Bearer {self.api_key}'}, timeout=120)
             response.raise_for_status()
         except requests.exceptions.RequestException as e:
             return f"Error during Amazon Search API call: {getattr(e.response, 'text', str(e))}"
@@ -915,10 +915,10 @@ class AmazonProductTool(BaseTool):
              results_folder: str = "scraping_results", return_content: bool = False) -> str:
         params = params or {}
         api_url = "https://app.scrapingbee.com/api/v1/amazon/product"
-        request_params = {'api_key': self.api_key, 'query': query, **params}
+        request_params = {'query': query, **params}
 
         try:
-            response = requests.get(api_url, params=request_params, headers={'User-Agent': 'LangChain'}, timeout=120)
+            response = requests.get(api_url, params=request_params, headers={'User-Agent': 'LangChain', 'Authorization': f'Bearer {self.api_key}'}, timeout=120)
             response.raise_for_status()
         except requests.exceptions.RequestException as e:
             return f"Error during Amazon Product API call: {getattr(e.response, 'text', str(e))}"
@@ -1000,10 +1000,10 @@ class WalmartSearchTool(BaseTool):
              results_folder: str = "scraping_results", return_content: bool = False) -> str:
         params = params or {}
         api_url = "https://app.scrapingbee.com/api/v1/walmart/search"
-        request_params = {'api_key': self.api_key, 'query': query, **params}
+        request_params = {'query': query, **params}
 
         try:
-            response = requests.get(api_url, params=request_params, headers={'User-Agent': 'LangChain'}, timeout=120)
+            response = requests.get(api_url, params=request_params, headers={'User-Agent': 'LangChain', 'Authorization': f'Bearer {self.api_key}'}, timeout=120)
             response.raise_for_status()
         except requests.exceptions.RequestException as e:
             return f"Error during Walmart Search API call: {getattr(e.response, 'text', str(e))}"
@@ -1089,10 +1089,10 @@ class WalmartProductTool(BaseTool):
              results_folder: str = "scraping_results", return_content: bool = False) -> str:
         params = params or {}
         api_url = "https://app.scrapingbee.com/api/v1/walmart/product"
-        request_params = {'api_key': self.api_key, 'product_id': product_id, **params}
+        request_params = {'product_id': product_id, **params}
 
         try:
-            response = requests.get(api_url, params=request_params, headers={'User-Agent': 'LangChain'}, timeout=120)
+            response = requests.get(api_url, params=request_params, headers={'User-Agent': 'LangChain', 'Authorization': f'Bearer {self.api_key}'}, timeout=120)
             response.raise_for_status()
         except requests.exceptions.RequestException as e:
             return f"Error during Walmart Product API call: {getattr(e.response, 'text', str(e))}"
@@ -1166,8 +1166,8 @@ class ChatGPTTool(BaseTool):
              results_folder: str = "scraping_results", return_content: bool = False) -> str:
         params = params or {}
         api_url = "https://app.scrapingbee.com/api/v1/chatgpt"
-        headers = {'User-Agent': 'LangChain', 'Content-Type': 'application/json'}
-        request_params = {'api_key': self.api_key, 'prompt': prompt, **params}
+        headers = {'User-Agent': 'LangChain', 'Content-Type': 'application/json', 'Authorization': f'Bearer {self.api_key}'}
+        request_params = {'prompt': prompt, **params}
 
         try:
             response = requests.get(api_url, headers=headers, params=request_params, timeout=180)
@@ -1241,11 +1241,11 @@ class YouTubeMetadataTool(BaseTool):
     def _run(self, video_id: str, results_folder: str = "scraping_results",
              return_content: bool = False) -> str:
         api_url = "https://app.scrapingbee.com/api/v1/youtube/metadata"
-        request_params = {'api_key': self.api_key, 'video_id': video_id}
+        request_params = {'video_id': video_id}
 
         try:
             response = requests.get(api_url, params=request_params,
-                                    headers={'User-Agent': 'LangChain'}, timeout=120)
+                                    headers={'User-Agent': 'LangChain', 'Authorization': f'Bearer {self.api_key}'}, timeout=120)
             response.raise_for_status()
         except requests.exceptions.RequestException as e:
             return f"Error during YouTube Metadata API call: {getattr(e.response, 'text', str(e))}"
@@ -1357,11 +1357,11 @@ class YouTubeSearchTool(BaseTool):
              results_folder: str = "scraping_results", return_content: bool = False) -> str:
         params = params or {}
         api_url = "https://app.scrapingbee.com/api/v1/youtube/search"
-        request_params = {'api_key': self.api_key, 'search': search, **params}
+        request_params = {'search': search, **params}
 
         try:
             response = requests.get(api_url, params=request_params,
-                                    headers={'User-Agent': 'LangChain'}, timeout=120)
+                                    headers={'User-Agent': 'LangChain', 'Authorization': f'Bearer {self.api_key}'}, timeout=120)
             response.raise_for_status()
         except requests.exceptions.RequestException as e:
             return f"Error during YouTube Search API call: {getattr(e.response, 'text', str(e))}"
@@ -1475,11 +1475,11 @@ class YouTubeSubtitlesTool(BaseTool):
             params["subtitle_origin"] = params.pop("transcript_origin")
 
         api_url = "https://app.scrapingbee.com/api/v1/youtube/subtitles"
-        request_params = {'api_key': self.api_key, 'video_id': video_id, **params}
+        request_params = {'video_id': video_id, **params}
 
         try:
             response = requests.get(api_url, params=request_params,
-                                    headers={'User-Agent': 'LangChain'}, timeout=120)
+                                    headers={'User-Agent': 'LangChain', 'Authorization': f'Bearer {self.api_key}'}, timeout=120)
             response.raise_for_status()
         except requests.exceptions.RequestException as e:
             return f"Error during YouTube Subtitles API call: {getattr(e.response, 'text', str(e))}"
@@ -1585,10 +1585,10 @@ class FastSearchTool(BaseTool):
              results_folder: str = "scraping_results", return_content: bool = False) -> str:
         params = params or {}
         api_url = "https://app.scrapingbee.com/api/v1/fast_search"
-        request_params = {'api_key': self.api_key, 'search': search, **params}
+        request_params = {'search': search, **params}
 
         try:
-            response = requests.get(api_url, params=request_params, headers={'User-Agent': 'LangChain'}, timeout=120)
+            response = requests.get(api_url, params=request_params, headers={'User-Agent': 'LangChain', 'Authorization': f'Bearer {self.api_key}'}, timeout=120)
             response.raise_for_status()
         except requests.exceptions.RequestException as e:
             return f"Error during Fast Search API call: {getattr(e.response, 'text', str(e))}"
@@ -1682,10 +1682,10 @@ class AmazonPricingTool(BaseTool):
              results_folder: str = "scraping_results", return_content: bool = False) -> str:
         params = params or {}
         api_url = "https://app.scrapingbee.com/api/v1/amazon/pricing"
-        request_params = {'api_key': self.api_key, 'asin': asin, **params}
+        request_params = {'asin': asin, **params}
 
         try:
-            response = requests.get(api_url, params=request_params, headers={'User-Agent': 'LangChain'}, timeout=120)
+            response = requests.get(api_url, params=request_params, headers={'User-Agent': 'LangChain', 'Authorization': f'Bearer {self.api_key}'}, timeout=120)
             response.raise_for_status()
         except requests.exceptions.RequestException as e:
             return f"Error during Amazon Pricing API call: {getattr(e.response, 'text', str(e))}"
@@ -1769,8 +1769,8 @@ class GeminiTool(BaseTool):
              results_folder: str = "scraping_results", return_content: bool = False) -> str:
         params = params or {}
         api_url = "https://app.scrapingbee.com/api/v1/gemini"
-        headers = {'User-Agent': 'LangChain', 'Content-Type': 'application/json'}
-        request_params = {'api_key': self.api_key, 'prompt': prompt, **params}
+        headers = {'User-Agent': 'LangChain', 'Content-Type': 'application/json', 'Authorization': f'Bearer {self.api_key}'}
+        request_params = {'prompt': prompt, **params}
 
         try:
             response = requests.get(api_url, headers=headers, params=request_params, timeout=180)
