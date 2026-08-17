@@ -40,7 +40,7 @@ scraping_prompt = (
         - "block_resources": true - Block images/CSS for faster text extraction (default: true)
         - "cookies": "name=value,domain=example.com;name2=value2" - Custom cookies with attributes
         - "country_code": "us"/"gb"/"de" etc. - Premium proxy location (lower-case ISO 3166-1)
-        - "custom_google": true - Version-sensitive parameter for scraping Google domains directly; prefer the google_search tool for structured SERPs
+        - "custom_google": true - Required when scraping Google domains directly (requests without it return 400); costs 15 credits. For structured SERPs, prefer the google_search or fast_search tools
         - "device": "desktop"/"mobile" - Device simulation
         - "extract_rules": CSS/XPath extraction rules, example: '{"page_title": "title", "first_heading": "h1", "links": {"selector": "a", "type": "list", "output": "@href"}}' (use the "title" selector for the page <title> tag, "h1" for the visible heading)
             [
