@@ -904,7 +904,7 @@ class AmazonProductTool(BaseTool):
         - "currency": "USD" / "GBP" / "EUR" etc. - Three-letter currency code (ISO 4217) to display prices in (conversion may be unavailable for some domains/products).
         - "device": "desktop" - Only desktop currently works on this endpoint (mobile/tablet return server errors).
         - "domain": "com" / "co.uk" / "de" etc. - The Amazon top-level domain to use for the request (default: com).
-        - "language": "en" / "es" / "fr" / "de" / "it" / "ja" etc. - Language code for the request to get results in a specific language.
+        - "language": "en" / "es" / "fr" / "de" / "it" / "ja" etc. - Language code for the request. Currently returns a server error (500) on this endpoint; avoid until fixed.
         - "light_request": true/false - Perform a light, faster request. Set to false to force a full JavaScript render which may yield more data, such as reviews (default: true).
         - "screenshot": true - Force a browser screenshot (15 credits, ignores light_request, returns a base64-encoded image).
         - "tag": "my-label" - Arbitrary label returned in response headers; does not affect scraping.
@@ -1467,7 +1467,7 @@ class YouTubeSubtitlesTool(BaseTool):
 
         NOTES:
         - Cost: 5 credits per request
-        - A requested language with no matching subtitles returns a 404 error
+        - A requested language/origin with no matching subtitles returns an empty subtitles object (not an error) - check for empty results
         - The response separates subtitles.auto_generated and subtitles.uploader_provided, keyed by
           language, with timestamped text runs (start_ms, d_duration_ms, snippet.runs[].text)
 
@@ -1679,7 +1679,7 @@ class AmazonPricingTool(BaseTool):
         - "currency": "USD" / "GBP" / "EUR" etc. - Three-letter currency code (ISO 4217) to display prices in (conversion may be unavailable for some domains/products).
         - "device": "desktop" - Only desktop is documented for this endpoint.
         - "domain": "com" / "co.uk" / "de" etc. - The Amazon top-level domain to use for the request (default: com).
-        - "language": "en" / "es" / "fr" etc. - Language code for the request.
+        - "language": "en" / "es" / "fr" etc. - Language code for the request. Currently returns a server error (500) on this endpoint; avoid until fixed.
         - "light_request": true/false - Perform a light, faster request. Set to false to force a full JavaScript render which may yield more data (default: true).
         - "tag": "my-label" - Arbitrary label returned in response headers; does not affect scraping.
         - "zip_code": "90210" - Postal or ZIP code for geolocation to see local availability, shipping, and regional prices.
