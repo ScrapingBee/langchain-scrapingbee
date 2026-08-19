@@ -1,4 +1,5 @@
 * 1.0.0 - Synced with the current ScrapingBee API surface:
+  * All requests now authenticate via the recommended `Authorization: Bearer` header instead of the deprecated `api_key` query parameter
   * Added `FastSearchTool` (Fast Search API), `AmazonPricingTool` (Amazon Pricing API), and `GeminiTool` (Gemini API)
   * Renamed `YouTubeTranscriptTool` to `YouTubeSubtitlesTool` and moved it to the `/youtube/subtitles` endpoint with the `subtitle_origin` parameter (`YouTubeTranscriptTool` and `transcript_origin` still work as deprecated aliases)
   * Removed `YouTubeTrainabilityTool` — the `/youtube/trainability` endpoint no longer exists

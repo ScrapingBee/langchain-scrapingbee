@@ -40,7 +40,7 @@ scraping_prompt = (
         - "block_resources": true - Block images/CSS for faster text extraction (default: true)
         - "cookies": "name=value,domain=example.com;name2=value2" - Custom cookies with attributes
         - "country_code": "us"/"gb"/"de" etc. - Premium proxy location (lower-case ISO 3166-1)
-        - "custom_google": true - Version-sensitive parameter for scraping Google domains directly; prefer the google_search tool for structured SERPs
+        - "custom_google": true - Required when scraping Google domains directly (requests without it return 400); costs 15 credits. For structured SERPs, prefer the google_search or fast_search tools
         - "device": "desktop"/"mobile" - Device simulation
         - "extract_rules": CSS/XPath extraction rules, example: '{"page_title": "title", "first_heading": "h1", "links": {"selector": "a", "type": "list", "output": "@href"}}' (use the "title" selector for the page <title> tag, "h1" for the visible heading)
             [
@@ -79,8 +79,8 @@ scraping_prompt = (
                 - Stealth proxy limitations: No infinite_scroll, timeout, custom headers/cookies, or evaluate_results in a JSON response
             ]
         - "json_response": true - Wrap response in JSON format with metadata. This can also be used to find internal xhr requests
-        - "max_cost": 25 - Only valid with mode=auto; caps the most expensive tier auto mode is allowed to try (e.g., 25 prevents escalation to stealth)
-        - "mode": "auto" - Automatic escalation from cheapest to most expensive configuration (rotating 1/5 credits -> premium 10/25 -> stealth 75) until one succeeds; only the successful tier is billed, a total failure costs 0. GET-only. Do NOT combine with render_js, premium_proxy, stealth_proxy, or transparent_status_code (returns 400). It never adds js_scenario, waits, headers, or cookies - pass those yourself
+        - "max_cost": 25 - Integer >= 1; only valid with mode=auto. Caps the most expensive tier auto mode is allowed to try (e.g., 25 prevents escalation to stealth)
+        - "mode": "auto" - Automatic escalation from cheapest to most expensive configuration (rotating 1/5 credits -> premium 10/25 -> stealth 75) until one succeeds; only the successful tier is billed, a total failure costs 0. The winning tier's cost is reported in the Spb-auto-cost response header. GET-only. Do NOT combine with render_js, premium_proxy, stealth_proxy, or transparent_status_code (returns 400). It never adds js_scenario, waits, headers, or cookies - pass those yourself
         - "own_proxy": "protocol://user:pass@host:port" - Use your own proxy (port defaults to 1080 if omitted)
         - "premium_proxy": true - Use premium/residential proxy pool (10 credits without JS rendering, 25 with)
         - "render_js": true/false - Enable JS rendering (default: true)
@@ -234,7 +234,8 @@ class ScrapeUrlInput(BaseModel):
         Examples:
         {"screenshot_full_page": true, "wait": 2000}
         {"extract_rules": '{"title": "h1", "price": ".price"}'}
-        {"country_code": "gb", "device": "mobile"}"""
+        {"country_code": "gb", "device": "mobile"}
+        {"mode": "auto", "max_cost": 25}"""
     )
     headers: Optional[Dict[str, str]] = Field(  # ADD THIS
         default_factory=dict,
@@ -316,9 +317,10 @@ class ScrapeUrlTool(BaseTool):
             processed_params['forward_headers'] = True
 
         final_headers['User-Agent'] = 'LangChain'
+        final_headers['Authorization'] = f'Bearer {self.api_key}'
 
         api_url = "https://app.scrapingbee.com/api/v1/"
-        request_params = {'api_key': self.api_key, 'url': url, **processed_params}
+        request_params = {'url': url, **processed_params}
 
         try:
             response = requests.get(api_url, params=request_params, headers=final_headers, timeout=180)
@@ -466,6 +468,9 @@ class GoogleSearchTool(BaseTool):
         - "sort_by": "relevance"/"reviews"/"price_asc"/"price_desc" - Sorting (shopping search only)
         - "tag": "my-label" - Arbitrary label returned in response headers; does not affect scraping
 
+        IGNORED PARAMS (accepted but have no effect - do not use):
+        - "nb_results": silently ignored by the API; use "page"/"pages" for pagination instead
+
         NOTES:
         - Cost: 10 credits per light request, 15 with light_request=false
         - search_type=lens requires an image URL in the search input; search_type=ai_mode accepts at most 400 input characters
@@ -580,10 +585,10 @@ class GoogleSearchTool(BaseTool):
              results_folder: str = "scraping_results", return_content: bool = False) -> str:
         params = params or {}
         api_url = "https://app.scrapingbee.com/api/v1/store/google"
-        request_params = {'api_key': self.api_key, 'search': search, **params}
+        request_params = {'search': search, **params}
 
         try:
-            response = requests.get(api_url, params=request_params, headers={'User-Agent': 'LangChain'}, timeout=120)
+            response = requests.get(api_url, params=request_params, headers={'User-Agent': 'LangChain', 'Authorization': f'Bearer {self.api_key}'}, timeout=120)
             response.raise_for_status()
         except requests.exceptions.RequestException as e:
             return f"Error during Google Search API call: {getattr(e.response, 'text', str(e))}"
@@ -745,10 +750,9 @@ class CheckUsageTool(BaseTool):
 
     def _run(self) -> str:
         api_url = "https://app.scrapingbee.com/api/v1/usage"
-        params = {'api_key': self.api_key}
 
         try:
-            response = requests.get(api_url, params=params, timeout=30)
+            response = requests.get(api_url, headers={'Authorization': f'Bearer {self.api_key}'}, timeout=30)
             response.raise_for_status()
             return response.text
         except requests.exceptions.RequestException as e:
@@ -802,7 +806,7 @@ class AmazonSearchTool(BaseTool):
         - "category_id": "123" - Restrict results to a specific Amazon category.
         - "country": "us" / "gb" / "de" etc. - Two-letter country code for geolocation. Do NOT set it to the same country as the selected domain (e.g., country=fr with domain=fr returns 400); use zip_code instead.
         - "currency": "USD" / "GBP" / "EUR" etc. - Three-letter currency code (ISO 4217) to display prices in (conversion may be unavailable for some domains/products).
-        - "device": "desktop" / "mobile" / "tablet" - Device type to simulate for the request (default: desktop).
+        - "device": "desktop" - Only desktop is currently accepted by the API (mobile/tablet are rejected).
         - "domain": "com" / "co.uk" / "de" etc. - The Amazon top-level domain to use for the search (default: com).
         - "language": "en-US" / "fr-FR" etc. - Language code for the request to get results in a specific language.
         - "light_request": true/false - Perform a light, faster request. Set to false to force a full JavaScript render which may yield more data (default: true).
@@ -824,10 +828,10 @@ class AmazonSearchTool(BaseTool):
              results_folder: str = "scraping_results", return_content: bool = False) -> str:
         params = params or {}
         api_url = "https://app.scrapingbee.com/api/v1/amazon/search"
-        request_params = {'api_key': self.api_key, 'query': query, **params}
+        request_params = {'query': query, **params}
 
         try:
-            response = requests.get(api_url, params=request_params, headers={'User-Agent': 'LangChain'}, timeout=120)
+            response = requests.get(api_url, params=request_params, headers={'User-Agent': 'LangChain', 'Authorization': f'Bearer {self.api_key}'}, timeout=120)
             response.raise_for_status()
         except requests.exceptions.RequestException as e:
             return f"Error during Amazon Search API call: {getattr(e.response, 'text', str(e))}"
@@ -895,11 +899,12 @@ class AmazonProductTool(BaseTool):
         """
         SUPPORTED PARAMS:
         - "add_html": true/false - Include the full HTML of the product page in the JSON response (default: false).
+        - "autoselect_variant": true/false - If the main variant is unavailable, automatically select an available one (default: false). Not listed in the current API docs for this endpoint, but accepted by the API.
         - "country": "us" / "gb" / "de" etc. - Two-letter country code for geolocation. Do NOT set it to the same country as the selected domain (e.g., country=fr with domain=fr returns 400); use zip_code instead.
         - "currency": "USD" / "GBP" / "EUR" etc. - Three-letter currency code (ISO 4217) to display prices in (conversion may be unavailable for some domains/products).
-        - "device": "desktop" / "mobile" / "tablet" - Device type to simulate for the request (default: desktop).
+        - "device": "desktop" - Only desktop currently works on this endpoint (mobile/tablet return server errors).
         - "domain": "com" / "co.uk" / "de" etc. - The Amazon top-level domain to use for the request (default: com).
-        - "language": "en" / "es" / "fr" / "de" / "it" / "ja" etc. - Language code for the request to get results in a specific language.
+        - "language": "en" / "es" / "fr" / "de" / "it" / "ja" etc. - Language code for the request. Currently returns a server error (500) on this endpoint; avoid until fixed.
         - "light_request": true/false - Perform a light, faster request. Set to false to force a full JavaScript render which may yield more data, such as reviews (default: true).
         - "screenshot": true - Force a browser screenshot (15 credits, ignores light_request, returns a base64-encoded image).
         - "tag": "my-label" - Arbitrary label returned in response headers; does not affect scraping.
@@ -915,10 +920,10 @@ class AmazonProductTool(BaseTool):
              results_folder: str = "scraping_results", return_content: bool = False) -> str:
         params = params or {}
         api_url = "https://app.scrapingbee.com/api/v1/amazon/product"
-        request_params = {'api_key': self.api_key, 'query': query, **params}
+        request_params = {'query': query, **params}
 
         try:
-            response = requests.get(api_url, params=request_params, headers={'User-Agent': 'LangChain'}, timeout=120)
+            response = requests.get(api_url, params=request_params, headers={'User-Agent': 'LangChain', 'Authorization': f'Bearer {self.api_key}'}, timeout=120)
             response.raise_for_status()
         except requests.exceptions.RequestException as e:
             return f"Error during Amazon Product API call: {getattr(e.response, 'text', str(e))}"
@@ -980,7 +985,7 @@ class WalmartSearchTool(BaseTool):
         - "device": "desktop" / "mobile" / "tablet" - Device type to simulate for the request (default: desktop).
         - "domain": "com" - Optional Walmart domain for localization.
         - "fulfillment_speed": "today" / "tomorrow" / "2_days" / "anytime" - Filter results by delivery speed.
-        - "fulfillment_type": "in_store" - Filter results to show only items available for in-store pickup.
+        - "fulfillment_type": "in_store" - Filter results to show only items available for in-store pickup. Currently returns a server error (500); avoid until fixed.
         - "light_request": true/false - Perform a light, faster request. Set to false to force a full JavaScript render which may yield more data (default: true).
         - "max_price": integer - Filter results by a maximum price.
         - "min_price": integer - Filter results by a minimum price.
@@ -1000,10 +1005,10 @@ class WalmartSearchTool(BaseTool):
              results_folder: str = "scraping_results", return_content: bool = False) -> str:
         params = params or {}
         api_url = "https://app.scrapingbee.com/api/v1/walmart/search"
-        request_params = {'api_key': self.api_key, 'query': query, **params}
+        request_params = {'query': query, **params}
 
         try:
-            response = requests.get(api_url, params=request_params, headers={'User-Agent': 'LangChain'}, timeout=120)
+            response = requests.get(api_url, params=request_params, headers={'User-Agent': 'LangChain', 'Authorization': f'Bearer {self.api_key}'}, timeout=120)
             response.raise_for_status()
         except requests.exceptions.RequestException as e:
             return f"Error during Walmart Search API call: {getattr(e.response, 'text', str(e))}"
@@ -1089,10 +1094,10 @@ class WalmartProductTool(BaseTool):
              results_folder: str = "scraping_results", return_content: bool = False) -> str:
         params = params or {}
         api_url = "https://app.scrapingbee.com/api/v1/walmart/product"
-        request_params = {'api_key': self.api_key, 'product_id': product_id, **params}
+        request_params = {'product_id': product_id, **params}
 
         try:
-            response = requests.get(api_url, params=request_params, headers={'User-Agent': 'LangChain'}, timeout=120)
+            response = requests.get(api_url, params=request_params, headers={'User-Agent': 'LangChain', 'Authorization': f'Bearer {self.api_key}'}, timeout=120)
             response.raise_for_status()
         except requests.exceptions.RequestException as e:
             return f"Error during Walmart Product API call: {getattr(e.response, 'text', str(e))}"
@@ -1166,8 +1171,8 @@ class ChatGPTTool(BaseTool):
              results_folder: str = "scraping_results", return_content: bool = False) -> str:
         params = params or {}
         api_url = "https://app.scrapingbee.com/api/v1/chatgpt"
-        headers = {'User-Agent': 'LangChain', 'Content-Type': 'application/json'}
-        request_params = {'api_key': self.api_key, 'prompt': prompt, **params}
+        headers = {'User-Agent': 'LangChain', 'Content-Type': 'application/json', 'Authorization': f'Bearer {self.api_key}'}
+        request_params = {'prompt': prompt, **params}
 
         try:
             response = requests.get(api_url, headers=headers, params=request_params, timeout=180)
@@ -1241,11 +1246,11 @@ class YouTubeMetadataTool(BaseTool):
     def _run(self, video_id: str, results_folder: str = "scraping_results",
              return_content: bool = False) -> str:
         api_url = "https://app.scrapingbee.com/api/v1/youtube/metadata"
-        request_params = {'api_key': self.api_key, 'video_id': video_id}
+        request_params = {'video_id': video_id}
 
         try:
             response = requests.get(api_url, params=request_params,
-                                    headers={'User-Agent': 'LangChain'}, timeout=120)
+                                    headers={'User-Agent': 'LangChain', 'Authorization': f'Bearer {self.api_key}'}, timeout=120)
             response.raise_for_status()
         except requests.exceptions.RequestException as e:
             return f"Error during YouTube Metadata API call: {getattr(e.response, 'text', str(e))}"
@@ -1357,11 +1362,11 @@ class YouTubeSearchTool(BaseTool):
              results_folder: str = "scraping_results", return_content: bool = False) -> str:
         params = params or {}
         api_url = "https://app.scrapingbee.com/api/v1/youtube/search"
-        request_params = {'api_key': self.api_key, 'search': search, **params}
+        request_params = {'search': search, **params}
 
         try:
             response = requests.get(api_url, params=request_params,
-                                    headers={'User-Agent': 'LangChain'}, timeout=120)
+                                    headers={'User-Agent': 'LangChain', 'Authorization': f'Bearer {self.api_key}'}, timeout=120)
             response.raise_for_status()
         except requests.exceptions.RequestException as e:
             return f"Error during YouTube Search API call: {getattr(e.response, 'text', str(e))}"
@@ -1380,10 +1385,17 @@ class YouTubeSearchTool(BaseTool):
         try:
             results = json.loads(response.text)
             # Handle different possible response structures
-            if isinstance(results, list):
+            if isinstance(results, dict):
+                inner = results.get("results", results.get("videos", results.get("items", [])))
+                # The API returns "results" as a JSON-encoded string; decode before counting
+                if isinstance(inner, str):
+                    try:
+                        inner = json.loads(inner)
+                    except json.JSONDecodeError:
+                        inner = None
+                result_count = len(inner) if isinstance(inner, (list, dict)) else "unknown"
+            elif isinstance(results, list):
                 result_count = len(results)
-            elif isinstance(results, dict):
-                result_count = len(results.get("results", results.get("videos", results.get("items", []))))
             else:
                 result_count = "unknown"
         except json.JSONDecodeError:
@@ -1455,7 +1467,7 @@ class YouTubeSubtitlesTool(BaseTool):
 
         NOTES:
         - Cost: 5 credits per request
-        - A requested language with no matching subtitles returns a 404 error
+        - A requested language/origin with no matching subtitles returns an empty subtitles object (not an error) - check for empty results
         - The response separates subtitles.auto_generated and subtitles.uploader_provided, keyed by
           language, with timestamped text runs (start_ms, d_duration_ms, snippet.runs[].text)
 
@@ -1475,11 +1487,11 @@ class YouTubeSubtitlesTool(BaseTool):
             params["subtitle_origin"] = params.pop("transcript_origin")
 
         api_url = "https://app.scrapingbee.com/api/v1/youtube/subtitles"
-        request_params = {'api_key': self.api_key, 'video_id': video_id, **params}
+        request_params = {'video_id': video_id, **params}
 
         try:
             response = requests.get(api_url, params=request_params,
-                                    headers={'User-Agent': 'LangChain'}, timeout=120)
+                                    headers={'User-Agent': 'LangChain', 'Authorization': f'Bearer {self.api_key}'}, timeout=120)
             response.raise_for_status()
         except requests.exceptions.RequestException as e:
             return f"Error during YouTube Subtitles API call: {getattr(e.response, 'text', str(e))}"
@@ -1585,10 +1597,10 @@ class FastSearchTool(BaseTool):
              results_folder: str = "scraping_results", return_content: bool = False) -> str:
         params = params or {}
         api_url = "https://app.scrapingbee.com/api/v1/fast_search"
-        request_params = {'api_key': self.api_key, 'search': search, **params}
+        request_params = {'search': search, **params}
 
         try:
-            response = requests.get(api_url, params=request_params, headers={'User-Agent': 'LangChain'}, timeout=120)
+            response = requests.get(api_url, params=request_params, headers={'User-Agent': 'LangChain', 'Authorization': f'Bearer {self.api_key}'}, timeout=120)
             response.raise_for_status()
         except requests.exceptions.RequestException as e:
             return f"Error during Fast Search API call: {getattr(e.response, 'text', str(e))}"
@@ -1667,7 +1679,7 @@ class AmazonPricingTool(BaseTool):
         - "currency": "USD" / "GBP" / "EUR" etc. - Three-letter currency code (ISO 4217) to display prices in (conversion may be unavailable for some domains/products).
         - "device": "desktop" - Only desktop is documented for this endpoint.
         - "domain": "com" / "co.uk" / "de" etc. - The Amazon top-level domain to use for the request (default: com).
-        - "language": "en" / "es" / "fr" etc. - Language code for the request.
+        - "language": "en" / "es" / "fr" etc. - Language code for the request. Currently returns a server error (500) on this endpoint; avoid until fixed.
         - "light_request": true/false - Perform a light, faster request. Set to false to force a full JavaScript render which may yield more data (default: true).
         - "tag": "my-label" - Arbitrary label returned in response headers; does not affect scraping.
         - "zip_code": "90210" - Postal or ZIP code for geolocation to see local availability, shipping, and regional prices.
@@ -1682,10 +1694,10 @@ class AmazonPricingTool(BaseTool):
              results_folder: str = "scraping_results", return_content: bool = False) -> str:
         params = params or {}
         api_url = "https://app.scrapingbee.com/api/v1/amazon/pricing"
-        request_params = {'api_key': self.api_key, 'asin': asin, **params}
+        request_params = {'asin': asin, **params}
 
         try:
-            response = requests.get(api_url, params=request_params, headers={'User-Agent': 'LangChain'}, timeout=120)
+            response = requests.get(api_url, params=request_params, headers={'User-Agent': 'LangChain', 'Authorization': f'Bearer {self.api_key}'}, timeout=120)
             response.raise_for_status()
         except requests.exceptions.RequestException as e:
             return f"Error during Amazon Pricing API call: {getattr(e.response, 'text', str(e))}"
@@ -1769,8 +1781,8 @@ class GeminiTool(BaseTool):
              results_folder: str = "scraping_results", return_content: bool = False) -> str:
         params = params or {}
         api_url = "https://app.scrapingbee.com/api/v1/gemini"
-        headers = {'User-Agent': 'LangChain', 'Content-Type': 'application/json'}
-        request_params = {'api_key': self.api_key, 'prompt': prompt, **params}
+        headers = {'User-Agent': 'LangChain', 'Content-Type': 'application/json', 'Authorization': f'Bearer {self.api_key}'}
+        request_params = {'prompt': prompt, **params}
 
         try:
             response = requests.get(api_url, headers=headers, params=request_params, timeout=180)

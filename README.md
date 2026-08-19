@@ -87,6 +87,14 @@ html_result = scrape_tool.invoke({
 })
 print(html_result)
 
+# --- Test Case 1b: Scrape with Auto-Mode (automatic proxy/rendering escalation) ---
+print("\n--- 1b. Testing ScrapeUrlTool (Auto-Mode) ---")
+auto_result = scrape_tool.invoke({
+    'url': 'http://httpbin.org/html',
+    'params': {'mode': 'auto', 'max_cost': 25}
+})
+print(auto_result)
+
 # --- Test Case 2: Scrape a PDF file ---
 print("\n--- 2. Testing ScrapeUrlTool (PDF) ---")
 pdf_result = scrape_tool.invoke({
