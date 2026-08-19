@@ -806,7 +806,7 @@ class AmazonSearchTool(BaseTool):
         - "category_id": "123" - Restrict results to a specific Amazon category.
         - "country": "us" / "gb" / "de" etc. - Two-letter country code for geolocation. Do NOT set it to the same country as the selected domain (e.g., country=fr with domain=fr returns 400); use zip_code instead.
         - "currency": "USD" / "GBP" / "EUR" etc. - Three-letter currency code (ISO 4217) to display prices in (conversion may be unavailable for some domains/products).
-        - "device": "desktop" / "mobile" / "tablet" - Device type to simulate for the request (default: desktop).
+        - "device": "desktop" - Only desktop is currently accepted by the API (mobile/tablet are rejected).
         - "domain": "com" / "co.uk" / "de" etc. - The Amazon top-level domain to use for the search (default: com).
         - "language": "en-US" / "fr-FR" etc. - Language code for the request to get results in a specific language.
         - "light_request": true/false - Perform a light, faster request. Set to false to force a full JavaScript render which may yield more data (default: true).
@@ -902,7 +902,7 @@ class AmazonProductTool(BaseTool):
         - "autoselect_variant": true/false - If the main variant is unavailable, automatically select an available one (default: false). Not listed in the current API docs for this endpoint, but accepted by the API.
         - "country": "us" / "gb" / "de" etc. - Two-letter country code for geolocation. Do NOT set it to the same country as the selected domain (e.g., country=fr with domain=fr returns 400); use zip_code instead.
         - "currency": "USD" / "GBP" / "EUR" etc. - Three-letter currency code (ISO 4217) to display prices in (conversion may be unavailable for some domains/products).
-        - "device": "desktop" / "mobile" / "tablet" - Device type to simulate for the request (default: desktop).
+        - "device": "desktop" - Only desktop currently works on this endpoint (mobile/tablet return server errors).
         - "domain": "com" / "co.uk" / "de" etc. - The Amazon top-level domain to use for the request (default: com).
         - "language": "en" / "es" / "fr" / "de" / "it" / "ja" etc. - Language code for the request to get results in a specific language.
         - "light_request": true/false - Perform a light, faster request. Set to false to force a full JavaScript render which may yield more data, such as reviews (default: true).
@@ -985,7 +985,7 @@ class WalmartSearchTool(BaseTool):
         - "device": "desktop" / "mobile" / "tablet" - Device type to simulate for the request (default: desktop).
         - "domain": "com" - Optional Walmart domain for localization.
         - "fulfillment_speed": "today" / "tomorrow" / "2_days" / "anytime" - Filter results by delivery speed.
-        - "fulfillment_type": "in_store" - Filter results to show only items available for in-store pickup.
+        - "fulfillment_type": "in_store" - Filter results to show only items available for in-store pickup. Currently returns a server error (500); avoid until fixed.
         - "light_request": true/false - Perform a light, faster request. Set to false to force a full JavaScript render which may yield more data (default: true).
         - "max_price": integer - Filter results by a maximum price.
         - "min_price": integer - Filter results by a minimum price.
@@ -1385,10 +1385,17 @@ class YouTubeSearchTool(BaseTool):
         try:
             results = json.loads(response.text)
             # Handle different possible response structures
-            if isinstance(results, list):
+            if isinstance(results, dict):
+                inner = results.get("results", results.get("videos", results.get("items", [])))
+                # The API returns "results" as a JSON-encoded string; decode before counting
+                if isinstance(inner, str):
+                    try:
+                        inner = json.loads(inner)
+                    except json.JSONDecodeError:
+                        inner = None
+                result_count = len(inner) if isinstance(inner, (list, dict)) else "unknown"
+            elif isinstance(results, list):
                 result_count = len(results)
-            elif isinstance(results, dict):
-                result_count = len(results.get("results", results.get("videos", results.get("items", []))))
             else:
                 result_count = "unknown"
         except json.JSONDecodeError:
